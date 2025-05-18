@@ -6,7 +6,7 @@ Socksicle is just my personal Shadowsocks client built on ss-local and PyQt5 for
 
 - Lightweight and simple
 - Uses ss-local 🔒
-- Built with PyQt5 for a smooth GUI experience 🖥️
+- Built with PyQt5 🖥️
 - Designed specifically for Linux 🐧
 
 ## Installation 💻
