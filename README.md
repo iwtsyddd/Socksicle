@@ -1,3 +1,5 @@
+![icon](https://github.com/user-attachments/assets/8028914d-55b2-4429-8ec7-a0aabb76da11)
+
 # Socksicle 🚀
 
 Socksicle is just my personal Shadowsocks client built on ss-local and PyQt5 for Linux. I made it for myself because I didn’t like other clients 🤷‍♂️.
