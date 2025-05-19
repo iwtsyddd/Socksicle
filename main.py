@@ -14,6 +14,7 @@ if __name__ == "__main__":
     
     dir_path = os.path.dirname(os.path.abspath(__file__))
     icon_path = os.path.join(dir_path, "icon.png")
+    print("Иконка найдена?", os.path.isfile(icon_path))  # для проверки
 
     window = RoundedWindow()
     window.show()
