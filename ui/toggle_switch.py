@@ -1,60 +1,56 @@
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtProperty, QRect
-from PyQt5.QtGui import QPainter, QBrush, QColor
+from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRect, QPointF
+from PySide6.QtGui import QPainter, QBrush, QColor
 
 class AnimatedToggleSwitch(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(50, 24)
+        self.setFixedSize(52, 32) # M3 Switch dimensions
         self._enabled = False
         self._thumb_position = 4.0
         self._animation = QPropertyAnimation(self, b"thumbPosition")
-        self._animation.setDuration(150)
-        self._animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self._animation.setDuration(200)
+        self._animation.setEasingCurve(QEasingCurve.OutCubic)
         
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         
+        # Colors (M3 Dark)
+        track_on = QColor("#D0BCFF")
+        track_off = QColor("#49454F")
+        thumb_on = QColor("#381E72")
+        thumb_off = QColor("#938F99")
+        
         # Draw track
-        track_brush = QBrush(QColor("#7b61ff") if self._enabled else QColor("#555"))
         p.setPen(Qt.NoPen)
-        p.setBrush(track_brush)
-        p.drawRoundedRect(0, 0, self.width(), self.height(), 12, 12)
+        p.setBrush(QBrush(track_on if self._enabled else track_off))
+        p.drawRoundedRect(0, 0, self.width(), self.height(), 16, 16)
         
-        # Draw thumb - using QRect to fix any type issues
-        thumb_size = self.height() - 4
-        thumb_rect = QRect(int(self._thumb_position), 2, thumb_size, thumb_size)
-        p.setBrush(QBrush(QColor("#ffffff")))
-        p.drawEllipse(thumb_rect)
+        # Draw thumb
+        thumb_size = 24 if self._enabled else 16
+        thumb_y = (self.height() - thumb_size) / 2
         
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.toggle()
+        p.setBrush(QBrush(thumb_on if self._enabled else thumb_off))
+        p.drawEllipse(QRect(int(self._thumb_position), int(thumb_y), thumb_size, thumb_size))
             
     def toggle(self, enable=None):
         if enable is not None:
-            if self._enabled == enable:
-                return
+            if self._enabled == enable: return
             self._enabled = enable
         else:
             self._enabled = not self._enabled
             
-        end_pos = float(self.width() - self.height() + 2) if self._enabled else 4.0
+        # Target positions
+        end_pos = 24.0 if self._enabled else 4.0
         
         self._animation.stop()
-        self._animation.setStartValue(self._thumb_position)
         self._animation.setEndValue(end_pos)
         self._animation.start()
         
-    def thumbPosition(self):
-        return self._thumb_position
-        
+    def getThumbPosition(self): return self._thumb_position
     def setThumbPosition(self, pos):
         self._thumb_position = pos
         self.update()
         
-    thumbPosition = pyqtProperty(float, thumbPosition, setThumbPosition)
-    
-    def isEnabled(self):
-        return self._enabled
+    thumbPosition = Property(float, getThumbPosition, setThumbPosition)

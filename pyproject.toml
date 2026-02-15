@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "socksicle"
+version = "1.0"
+description = "A simple Shadowsocks GUI client"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "iwtsd"},
+]
+dependencies = [
+    "PySide6>=6.0.0",
+    "PySocks>=1.7.1",
+]
+
+[project.gui-scripts]
+socksicle = "main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ui", "utils"]
+include = [
+    "main.py",
+    "icon.png",
+]
+
+[tool.hatch.build]
+artifacts = [
+    "icon.png",
+]

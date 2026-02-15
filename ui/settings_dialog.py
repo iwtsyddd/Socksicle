@@ -1,110 +1,84 @@
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, 
                            QHBoxLayout, QLineEdit, QSpinBox, QCheckBox,
-                           QFormLayout, QGroupBox)
-from PyQt5.QtCore import Qt
+                           QFormLayout, QGroupBox, QFrame)
+from PySide6.QtCore import Qt
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent=None, current_port="1080", auto_connect=False):
+    def __init__(self, parent=None, theme=None, current_port="1080", auto_connect=False):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.setMinimumWidth(400)
-        self.setStyleSheet("""
-            QDialog {
-                background: #1e1e1e;
-                color: white;
-            }
-            QLabel {
-                color: white;
-            }
-            QLineEdit, QSpinBox {
-                background: #333;
-                color: white;
-                border: 1px solid #555;
+        self.theme = theme
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        self.main_layout = QVBoxLayout(self)
+        self.container = QFrame()
+        self.container.setStyleSheet(f"""
+            QFrame {{
+                background-color: {theme.surface};
+                border-radius: 28px;
+                border: none;
+            }}
+            QLabel {{ color: {theme.on_surface}; border: none; font-size: 14px; }}
+            QSpinBox {{
+                background-color: {theme.surface_variant};
+                color: {theme.on_surface}; border-radius: 8px; padding: 8px; border: none;
+            }}
+            QCheckBox {{ color: {theme.on_surface}; border: none; font-size: 14px; }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
                 border-radius: 4px;
-                padding: 5px;
-            }
-            QPushButton {
-                background: #7b61ff;
-                color: white;
-                border-radius: 4px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background: #8d76ff;
-            }
-            QPushButton:pressed {
-                background: #6a52e0;
-            }
-            QPushButton#cancelButton {
-                background: #444;
-            }
-            QPushButton#cancelButton:hover {
-                background: #555;
-            }
-            QGroupBox {
-                color: white;
-                border: 1px solid #555;
-                border-radius: 4px;
-                margin-top: 1.5em;
-                padding-top: 0.5em;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-            QCheckBox {
-                color: white;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border: 1px solid #555;
-                border-radius: 3px;
-                background: #333;
-            }
-            QCheckBox::indicator:checked {
-                background: #7b61ff;
-            }
+                border: none;
+                background: {theme.surface_variant};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {theme.primary};
+            }}
         """)
+        self.main_layout.addWidget(self.container)
         
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self.container)
+        layout.setContentsMargins(24, 24, 24, 24)
         
-        # Connection settings group
-        connection_group = QGroupBox("Connection Settings")
-        connection_layout = QFormLayout(connection_group)
+        title = QLabel("Settings")
+        title.setStyleSheet(f"font-size: 18px; font-weight: bold; margin-bottom: 16px; color: {theme.on_surface};")
+        layout.addWidget(title)
         
-        # Local port setting
+        form_layout = QFormLayout()
+        form_layout.setSpacing(16)
+        
         self.port_input = QSpinBox()
         self.port_input.setRange(1024, 65535)
         self.port_input.setValue(int(current_port))
-        connection_layout.addRow("Local port:", self.port_input)
+        form_layout.addRow("Local port:", self.port_input)
         
-        # Auto-connect setting
         self.auto_connect_check = QCheckBox("Auto-connect on startup")
         self.auto_connect_check.setChecked(auto_connect)
-        connection_layout.addRow("", self.auto_connect_check)
+        form_layout.addRow("", self.auto_connect_check)
+        layout.addLayout(form_layout)
         
-        layout.addWidget(connection_group)
-        
-        # Buttons
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 24, 0, 0)
         
         self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setObjectName("cancelButton")
+        self.cancel_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.primary}; background: transparent; padding: 10px; font-weight: 500; border: none;
+            }}
+            QPushButton:hover {{ background: rgba(208, 188, 255, 0.1); border-radius: 20px; }}
+        """)
         self.cancel_button.clicked.connect(self.reject)
         
         self.save_button = QPushButton("Save")
+        self.save_button.setStyleSheet(theme.get_button_style("filled"))
         self.save_button.clicked.connect(self.accept)
         
-        button_layout.addWidget(self.cancel_button)
         button_layout.addStretch()
+        button_layout.addWidget(self.cancel_button)
         button_layout.addWidget(self.save_button)
-        
         layout.addLayout(button_layout)
     
     def get_settings(self):
-        """Get the settings from the dialog"""
         return {
             "local_port": str(self.port_input.value()),
             "auto_connect": self.auto_connect_check.isChecked()

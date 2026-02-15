@@ -2,13 +2,15 @@ import subprocess
 import signal
 import os
 import time
-from PyQt5.QtCore import QObject, QProcess, pyqtSignal, QTimer
+import shutil
+from PySide6.QtCore import QObject, QProcess, Signal, QTimer
+from .distro_utils import check_ss_local, get_ss_install_command
 
 class ShadowsocksProcess(QObject):
-    """Class to manage the Shadowsocks local process using QProcess"""
-    statusChanged = pyqtSignal(str, bool)  # Message, is_error
-    connectionStateChanged = pyqtSignal(bool)  # Connected state
-    logUpdated = pyqtSignal(str)  # Log message
+    """Class to manage the Shadowsocks local process using QProcess (shadowsocks-rust)"""
+    statusChanged = Signal(str, bool)  # Message, is_error
+    connectionStateChanged = Signal(bool)  # Connected state
+    logUpdated = Signal(str)  # Log message
     
     def __init__(self):
         super().__init__()
@@ -22,23 +24,13 @@ class ShadowsocksProcess(QObject):
         self.startup_timer = QTimer()
         self.startup_timer.setSingleShot(True)
         self.startup_timer.timeout.connect(self.handle_startup_timeout)
-        
-    def check_ss_local(self):
-        """Check if ss-local is available in PATH"""
-        try:
-            subprocess.run(["which", "ss-local"], 
-                         check=True, 
-                         stdout=subprocess.PIPE, 
-                         stderr=subprocess.PIPE)
-            return True
-        except subprocess.CalledProcessError:
-            return False
     
     def connect(self, server_data):
-        """Connect to a Shadowsocks server using QProcess"""
-        if not self.check_ss_local():
+        """Connect to a Shadowsocks server using sslocal"""
+        if not check_ss_local():
+            cmd = get_ss_install_command()
             self.statusChanged.emit(
-                "Error: ss-local not found. Please install shadowsocks-libev package.", 
+                f"Error: sslocal not found.\nTo install it, run:\n{cmd}", 
                 True
             )
             return False
@@ -58,21 +50,28 @@ class ShadowsocksProcess(QObject):
                 self.process.errorOccurred.connect(self.handle_error)
                 self.process.finished.connect(self.handle_finished)
             
-            # Prepare command arguments
-            program = "ss-local"
+            # Prepare command arguments for sslocal (shadowsocks-rust)
+            program = "sslocal"
+            # sslocal uses -s (server_addr:port), -b (local_addr:port), -m (method), -k (password)
+            # Use -U for both TCP and UDP relay
+            server_addr = f"{server_data.get('host', '')}:{server_data.get('port', '443')}"
+            local_addr = f"127.0.0.1:{self.local_port}"
+            
             arguments = [
-                "-s", server_data.get("host", ""),
-                "-p", server_data.get("port", "443"),
-                "-l", self.local_port,
+                "-s", server_addr,
+                "-b", local_addr,
                 "-m", server_data.get("method", "aes-256-gcm"),
                 "-k", server_data.get("password", ""),
-                "-u"  # Enable UDP relay
+                "-U"  # Enable TCP and UDP relay
             ]
             
             # Log command (hide password)
             safe_args = arguments.copy()
-            pwd_index = safe_args.index("-k") + 1
-            safe_args[pwd_index] = "********"
+            try:
+                pwd_index = safe_args.index("-k") + 1
+                safe_args[pwd_index] = "********"
+            except (ValueError, IndexError):
+                pass
             self.logUpdated.emit(f"Starting: {program} {' '.join(safe_args)}")
             
             # Start process
@@ -112,18 +111,20 @@ class ShadowsocksProcess(QObject):
         """Handle process stdout"""
         if self.process:
             data = self.process.readAllStandardOutput().data().decode()
-            self.logUpdated.emit(data.strip())
+            if data:
+                self.logUpdated.emit(data.strip())
     
     def handle_stderr(self):
         """Handle process stderr"""
         if self.process:
             data = self.process.readAllStandardError().data().decode()
-            self.logUpdated.emit(f"Error: {data.strip()}")
+            if data:
+                self.logUpdated.emit(f"Error: {data.strip()}")
     
     def handle_error(self, error):
         """Handle process errors"""
         error_msg = {
-            QProcess.FailedToStart: "Failed to start ss-local",
+            QProcess.FailedToStart: "Failed to start sslocal",
             QProcess.Crashed: "Process crashed",
             QProcess.Timedout: "Process timed out",
             QProcess.WriteError: "Write error",
