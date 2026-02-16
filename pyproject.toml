@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socksicle"
-version = "1.0"
+version = "1.2"
 description = "A simple Shadowsocks GUI client"
 readme = "README.md"
 requires-python = ">=3.8"

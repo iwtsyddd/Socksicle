@@ -55,6 +55,11 @@ class SettingsDialog(QDialog):
         self.auto_connect_check = QCheckBox("Auto-connect on startup")
         self.auto_connect_check.setChecked(auto_connect)
         form_layout.addRow("", self.auto_connect_check)
+
+        self.minimize_to_tray_check = QCheckBox("Minimize to tray on close")
+        self.minimize_to_tray_check.setChecked(parent.settings.get("minimize_to_tray", True))
+        form_layout.addRow("", self.minimize_to_tray_check)
+        
         layout.addLayout(form_layout)
         
         button_layout = QHBoxLayout()
@@ -81,5 +86,6 @@ class SettingsDialog(QDialog):
     def get_settings(self):
         return {
             "local_port": str(self.port_input.value()),
-            "auto_connect": self.auto_connect_check.isChecked()
+            "auto_connect": self.auto_connect_check.isChecked(),
+            "minimize_to_tray": self.minimize_to_tray_check.isChecked()
         }

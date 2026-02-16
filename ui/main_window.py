@@ -5,7 +5,7 @@ import threading
 from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, 
-    QButtonGroup, QFrame, QMessageBox, QDialog, QScrollArea, QProgressBar, QLineEdit, QGraphicsOpacityEffect, QSystemTrayIcon, QMenu, QApplication
+    QButtonGroup, QFrame, QMessageBox, QDialog, QScrollArea, QProgressBar, QLineEdit, QGraphicsOpacityEffect, QSystemTrayIcon, QMenu, QApplication, QFileDialog
 )
 from PySide6.QtCore import Qt, QTimer, Signal, Slot, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QColor, QIcon, QAction
@@ -26,7 +26,7 @@ from utils.sub_manager import parse_subscription, load_subscriptions, save_subsc
 class RoundedWindow(QWidget):
     geoInfoReady = Signal(dict)
     pingResultReady = Signal(int, float)
-    subscriptionUpdated = Signal(bool)
+    subscriptionUpdated = Signal(bool, int)
 
     def __init__(self):
         super().__init__()
@@ -86,12 +86,23 @@ class RoundedWindow(QWidget):
         self.action_bar = QHBoxLayout()
         self.add_btn = QPushButton("+ Link"); self.add_btn.setStyleSheet(self.theme.get_button_style("tonal")); self.add_btn.clicked.connect(self.show_add_server_dialog)
         self.add_sub_btn = QPushButton("+ Sub"); self.add_sub_btn.setStyleSheet(self.theme.get_button_style("tonal")); self.add_sub_btn.clicked.connect(self.show_add_sub_dialog)
+        
+        self.export_btn = QPushButton("📤"); self.export_btn.setToolTip("Export Profiles"); self.export_btn.setStyleSheet(self.theme.get_button_style("text")); self.export_btn.setFixedSize(40, 40); self.export_btn.clicked.connect(self.export_profiles)
+        self.import_btn = QPushButton("📥"); self.import_btn.setToolTip("Import Profiles"); self.import_btn.setStyleSheet(self.theme.get_button_style("text")); self.import_btn.setFixedSize(40, 40); self.import_btn.clicked.connect(self.import_profiles)
+        
         self.update_sub_btn = QPushButton("🔄 Update"); self.update_sub_btn.setStyleSheet(self.theme.get_button_style("text")); self.update_sub_btn.clicked.connect(self.update_current_subscription); self.update_sub_btn.hide()
         self.ping_all_btn = QPushButton("⚡ Ping All"); self.ping_all_btn.setStyleSheet(self.theme.get_button_style("text")); self.ping_all_btn.clicked.connect(self.ping_all_servers)
         self.del_sub_btn = QPushButton("🗑 Sub"); self.del_sub_btn.setStyleSheet(self.theme.get_button_style("text")); self.del_sub_btn.clicked.connect(self.delete_current_subscription); self.del_sub_btn.hide()
-        self.action_bar.addWidget(self.add_btn); self.action_bar.addWidget(self.add_sub_btn); self.action_bar.addStretch(); self.action_bar.addWidget(self.update_sub_btn); self.action_bar.addWidget(self.ping_all_btn); self.action_bar.addWidget(self.del_sub_btn)
+        
+        self.action_bar.addWidget(self.add_btn); self.action_bar.addWidget(self.add_sub_btn); self.action_bar.addWidget(self.export_btn); self.action_bar.addWidget(self.import_btn); self.action_bar.addStretch(); self.action_bar.addWidget(self.update_sub_btn); self.action_bar.addWidget(self.ping_all_btn); self.action_bar.addWidget(self.del_sub_btn)
         self.layout.addLayout(self.action_bar)
         
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search servers...")
+        self.search_bar.setStyleSheet(f"background: {self.theme.surface_variant}; color: {self.theme.on_surface}; padding: 8px 12px; border-radius: 12px; border: none; margin-top: 4px;")
+        self.search_bar.textChanged.connect(self.filter_servers)
+        self.layout.addWidget(self.search_bar)
+
         self.scroll_area = QScrollArea(); self.scroll_area.setWidgetResizable(True); self.scroll_area.setStyleSheet(f"QScrollArea {{ background: transparent; border: none; }} QScrollBar:vertical {{ border: none; background: transparent; width: 6px; }} QScrollBar::handle:vertical {{ background: {self.theme.surface_variant}; border-radius: 3px; min-height: 30px; }}")
         self.scroll_content = QWidget(); self.server_layout = QVBoxLayout(self.scroll_content); self.server_layout.setContentsMargins(0, 0, 0, 0); self.server_layout.setSpacing(10); self.scroll_area.setWidget(self.scroll_content); self.layout.addWidget(self.scroll_area)
         self.opacity_effect = QGraphicsOpacityEffect(self.scroll_area); self.scroll_area.setGraphicsEffect(self.opacity_effect); self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity"); self.fade_anim.setDuration(200)
@@ -108,6 +119,14 @@ class RoundedWindow(QWidget):
         for txt, cmd in [("—", self.showMinimized), ("✕", self.close)]:
             btn = QPushButton(txt); btn.setFixedSize(36, 36); btn.setStyleSheet(f"QPushButton {{ color: white; background: transparent; border-radius: 18px; border: none; }} QPushButton:hover {{ background: {self.theme.surface_variant}; }}"); btn.clicked.connect(cmd); header.addWidget(btn)
         self.layout.addLayout(header)
+
+    def closeEvent(self, event):
+        if self.settings.get("minimize_to_tray", True):
+            event.ignore()
+            self.hide()
+            self.show_notification("Socksicle", "Application is still running in the tray.")
+        else:
+            self.quit_app()
 
     def setup_status_card(self):
         self.status_card = QFrame(); c = QColor(self.theme.secondary_container); rgba = f"rgba({c.red()}, {c.green()}, {c.blue()}, 0.4)"; self.status_card.setStyleSheet(f"QFrame {{ background-color: {rgba}; border-radius: 28px; border: none; }} QLabel {{ color: {self.theme.on_secondary_container}; border: none; background: transparent; }}"); self.status_card.setFixedHeight(120); card_layout = QVBoxLayout(self.status_card); card_layout.setContentsMargins(24, 16, 24, 16)
@@ -254,6 +273,14 @@ class RoundedWindow(QWidget):
             self.fade_anim.setStartValue(0.0); self.fade_anim.setEndValue(1.0); self.fade_anim.start()
         self.fade_anim.finished.connect(on_finished); self.fade_anim.start()
 
+    def filter_servers(self, text):
+        text = text.lower()
+        for i in range(self.server_layout.count()):
+            item = self.server_layout.itemAt(i).widget()
+            if isinstance(item, ServerItem):
+                visible = text in item.radio.text().lower() or text in item.server_data.get('host', '').lower()
+                item.setVisible(visible)
+
     def update_current_subscription(self):
         if self.current_tab == "Manual": return
         sub = next((s for s in self.subscriptions if s['name'] == self.current_tab), None)
@@ -261,22 +288,29 @@ class RoundedWindow(QWidget):
             self.update_sub_btn.setText("⏳"); self.update_sub_btn.setEnabled(False)
             threading.Thread(target=self._update_sub_worker, args=(sub,), daemon=True).start()
 
-    @Slot(bool)
-    def _on_sub_updated(self, success):
+    @Slot(bool, int)
+    def _on_sub_updated(self, success, new_count):
         self.update_sub_btn.setText("🔄 Update"); self.update_sub_btn.setEnabled(True)
-        if success: self.switch_tab(self.current_tab)
+        if success:
+            self.switch_tab(self.current_tab)
+            if new_count > 0: self.show_notification("Subscription Updated", f"Added {new_count} new nodes.")
+            else: self.show_notification("Subscription Updated", "Already up to date.")
         else: QMessageBox.warning(self, "Error", "Failed to update subscription.")
 
     def _update_sub_worker(self, sub_to_update):
         links, traffic = parse_subscription(sub_to_update['url'])
         if links:
-            servers = []
+            old_keys = {s['key'] for s in sub_to_update.get('servers', [])}
+            new_servers = []
+            new_count = 0
             for l in links:
                 data = decode_ss_link(l)
-                if data: servers.append({"key": l, "name": data.get('tag', 'Server'), "host": data.get('server', ''), "port": str(data.get('port', 443)), "method": data.get('method', 'aes-256-gcm'), "password": data.get('password', '')})
-            sub_to_update['servers'] = servers; sub_to_update['traffic'] = traffic
-            save_subscriptions(self.subscriptions); self.subscriptionUpdated.emit(True)
-        else: self.subscriptionUpdated.emit(False)
+                if data:
+                    new_servers.append({"key": l, "name": data.get('tag', 'Server'), "host": data.get('server', ''), "port": str(data.get('port', 443)), "method": data.get('method', 'aes-256-gcm'), "password": data.get('password', '')})
+                    if l not in old_keys: new_count += 1
+            sub_to_update['servers'] = new_servers; sub_to_update['traffic'] = traffic
+            save_subscriptions(self.subscriptions); self.subscriptionUpdated.emit(True, new_count)
+        else: self.subscriptionUpdated.emit(False, 0)
 
     def update_tabs(self):
         while self.tabs_layout.count():
@@ -300,6 +334,7 @@ class RoundedWindow(QWidget):
             curr = self.ss_client.get_current_server();
             if self.ss_client.is_connected and curr and curr.get('key') == s.get('key'): item.radio.setChecked(True)
         self.server_layout.addStretch(); self.update_tray_menu()
+        self.filter_servers(self.search_bar.text())
 
     def ping_all_servers(self):
         servers = self.manual_servers if self.current_tab == "Manual" else next((s['servers'] for s in self.subscriptions if s['name'] == self.current_tab), [])
@@ -338,13 +373,40 @@ class RoundedWindow(QWidget):
             try:
                 with open(self.settings_file, 'r') as f: return json.load(f)
             except: pass
-        return {"local_port": "1080", "auto_connect": False}
+        return {"local_port": "1080", "auto_connect": False, "minimize_to_tray": True}
     def save_settings(self):
         with open(self.settings_file, 'w') as f: json.dump(self.settings, f)
     def show_settings_dialog(self):
         d = SettingsDialog(self, self.theme, self.ss_client.local_port, self.settings.get("auto_connect", False))
         if d.exec() == QDialog.Accepted:
             s = d.get_settings(); self.settings.update(s); self.ss_client.local_port = s["local_port"]; self.save_settings()
+
+    def export_profiles(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Export Profiles", "", "JSON Files (*.json)")
+        if path:
+            data = {"manual_servers": self.manual_servers, "subscriptions": self.subscriptions}
+            try:
+                with open(path, 'w') as f: json.dump(data, f, indent=4)
+                self.show_notification("Export Successful", f"Profiles saved to {os.path.basename(path)}")
+            except Exception as e: QMessageBox.critical(self, "Error", f"Failed to export: {e}")
+
+    def import_profiles(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import Profiles", "", "JSON Files (*.json)")
+        if path:
+            try:
+                with open(path, 'r') as f: data = json.load(f)
+                added_m = 0; added_s = 0
+                if "manual_servers" in data:
+                    for s in data["manual_servers"]:
+                        if s not in self.manual_servers: self.manual_servers.append(s); added_m += 1
+                if "subscriptions" in data:
+                    for sub in data["subscriptions"]:
+                        if not any(x['url'] == sub['url'] for x in self.subscriptions): self.subscriptions.append(sub); added_s += 1
+                if added_m or added_s:
+                    self.save_manual_servers(); save_subscriptions(self.subscriptions); self.update_tabs(); self.refresh_server_list()
+                    self.show_notification("Import Successful", f"Added {added_m} servers and {added_s} subscriptions.")
+                else: QMessageBox.information(self, "Import", "No new profiles found in file.")
+            except Exception as e: QMessageBox.critical(self, "Error", f"Failed to import: {e}")
     def show_add_server_dialog(self):
         d = AddServerDialog(self, self.theme)
         if d.exec() == QDialog.Accepted:
