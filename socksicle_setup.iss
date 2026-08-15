@@ -267,7 +267,7 @@ begin
 
   Params := '"' + ExpandConstant('{app}\main.py') + '"';
   WorkDir := ExpandConstant('{app}');
-  IconPath := ExpandConstant('{app}\icon.png');
+  IconPath := ExpandConstant('{app}\icon.ico');
 
   try
     CreateShellLink(
