@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QFrame, QLabel
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt
 
 class ConnectionLogDialog(QDialog):

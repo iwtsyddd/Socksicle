@@ -1,6 +1,5 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QFrame)
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import Qt
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None, theme=None):
@@ -27,7 +26,7 @@ class AboutDialog(QDialog):
         title.setStyleSheet(f"font-size: 24px; font-weight: 700; color: {theme.primary};")
         title.setAlignment(Qt.AlignCenter)
         
-        desc = QLabel("A modern, beautiful Shadowsocks GUI client for Linux, built with PySide6 and Material Design 3.")
+        desc = QLabel("A modern, beautiful Shadowsocks GUI client for Linux and Windows, built with PySide6 and Material Design 3.")
         desc.setWordWrap(True)
         desc.setStyleSheet(f"font-size: 14px; color: {theme.on_surface};")
         desc.setAlignment(Qt.AlignCenter)

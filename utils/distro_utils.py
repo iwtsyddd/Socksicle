@@ -1,12 +1,10 @@
 import os
-import shutil
-import platform
 
 def get_distro_info():
     """Parse /etc/os-release to get distribution information."""
     info = {}
     if os.path.exists("/etc/os-release"):
-        with open("/etc/os-release") as f:
+        with open("/etc/os-release", encoding="utf-8", errors="replace") as f:
             for line in f:
                 if "=" in line:
                     key, value = line.rstrip().split("=", 1)
@@ -31,7 +29,3 @@ def get_ss_install_command():
         return "sudo zypper install shadowsocks-rust"
     else:
         return "Please install shadowsocks-rust using your package manager or cargo."
-
-def check_ss_local():
-    """Check if sslocal is available in PATH using shutil.which."""
-    return shutil.which("sslocal") is not None

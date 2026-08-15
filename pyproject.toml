@@ -4,19 +4,45 @@ build-backend = "hatchling.build"
 
 [project]
 name = "socksicle"
-version = "1.2"
-description = "A simple Shadowsocks GUI client"
+version = "1.3"
+description = "Multi-protocol proxy client with a clean Material Design GUI supporting Shadowsocks, VLESS, and VMess"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "iwtsd"},
+]
+keywords = ["shadowsocks", "proxy", "gui", "vless", "vmess", "socks5", "xray", "sing-box"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Internet :: Proxy Servers",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
 ]
 dependencies = [
     "PySide6>=6.0.0",
     "PySocks>=1.7.1",
     "qrcode[pil]>=7.0",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[project.urls]
+Homepage = "https://github.com/iwtsyddd/Socksicle"
+Repository = "https://github.com/iwtsyddd/Socksicle"
+Changelog = "https://github.com/iwtsyddd/Socksicle/blob/main/CHANGELOG.md"
+Issues = "https://github.com/iwtsyddd/Socksicle/issues"
 
 [project.gui-scripts]
 socksicle = "main:main"
@@ -26,6 +52,7 @@ packages = ["ui", "utils"]
 include = [
     "main.py",
     "icon.png",
+    "__init__.py",
 ]
 
 [tool.hatch.build]

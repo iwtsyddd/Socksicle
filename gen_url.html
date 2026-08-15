@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TwinSock URL Encoder</title>
+<style>
+  :root {
+    --bg: #0f0d1a;
+    --surface: #1c1930;
+    --surface-variant: #262240;
+    --primary: #bb86fc;
+    --on-surface: #e8e6f5;
+    --on-surface-variant: #a29ac0;
+    --error: #ff7b7b;
+    --ok: #7ee0a3;
+    --border: #332e52;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--on-surface);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    width: 100%;
+    max-width: 760px;
+    align-self: flex-start;
+  }
+  h1 {
+    margin: 0 0 4px 0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .subtitle {
+    margin: 0 0 24px 0;
+    color: var(--on-surface-variant);
+    font-size: 13px;
+  }
+  .field { margin-bottom: 20px; }
+  .label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-surface);
+    margin-bottom: 8px;
+  }
+  input[type="text"], textarea {
+    width: 100%;
+    background: var(--surface-variant);
+    color: var(--on-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+    outline: none;
+    resize: vertical;
+  }
+  input[type="text"]:focus, textarea:focus {
+    border-color: var(--primary);
+  }
+  textarea { min-height: 110px; line-height: 1.45; }
+  textarea#input { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; }
+  textarea#output {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 13px;
+    min-height: 130px;
+  }
+  .row { display: flex; gap: 10px; }
+  .row input { flex: 1; }
+  .row textarea { flex: 1; }
+  .btn {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: filter 0.15s ease;
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn-primary {
+    background: var(--primary);
+    color: #1a1230;
+    min-width: 130px;
+  }
+  .btn-outline {
+    background: transparent;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+  }
+  .actions { display: flex; gap: 10px; margin: 4px 0 20px 0; }
+  .hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--on-surface-variant);
+  }
+  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+  .status.error { color: var(--error); }
+  .status.ok { color: var(--ok); }
+  .status.info { color: var(--on-surface-variant); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>TwinSock URL Encoder</h1>
+    <p class="subtitle">Encrypt ss://, vless://, vmess:// links and subscription URLs into shareable tws2:// links.</p>
+
+    <div class="field">
+      <label class="label" for="key">Share key</label>
+      <div class="row">
+        <input type="text" id="key" spellcheck="false"
+               placeholder="Paste your TwinSock share key (base64url, 32 bytes)...">
+        <button class="btn btn-outline" id="genKey" type="button">Generate key</button>
+      </div>
+      <div class="hint">The key encodes and decodes tws2:// links. Share it with the people you share links with.</div>
+    </div>
+
+    <div class="field">
+      <label class="label" for="input">Link or subscription URL</label>
+      <textarea id="input" spellcheck="false"
+        placeholder="One link per line: ss://, vless://, vmess:// or an http(s):// subscription URL"></textarea>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="encode" type="button">Encode</button>
+      <button class="btn btn-outline" id="copy" type="button">Copy all</button>
+    </div>
+
+    <div class="field">
+      <label class="label" for="output">Encoded tws2:// links</label>
+      <textarea id="output" readonly spellcheck="false"
+        placeholder="Encoded tws2:// links will appear here"></textarea>
+    </div>
+
+    <div class="status info" id="status"></div>
+  </div>
+
+<script>
+"use strict";
+
+/* ---------- base64url (no padding) ---------- */
+const B64URL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function b64urlEncode(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2];
+    out += B64URL_CHARS[b0 >> 2];
+    out += B64URL_CHARS[((b0 & 3) << 4) | (b1 !== undefined ? b1 : 0) >> 4];
+    out += b1 !== undefined ? B64URL_CHARS[((b1 & 15) << 2) | (b2 !== undefined ? b2 : 0) >> 6] : "";
+    out += b2 !== undefined ? B64URL_CHARS[b2 & 63] : "";
+  }
+  return out;
+}
+
+function b64urlDecode(str) {
+  str = str.trim();
+  if (!/^[A-Za-z0-9\-_]*$/.test(str) || str.length % 4 === 1) {
+    throw new Error("invalid base64url");
+  }
+  const bin = atob(str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (str.length % 4)) % 4));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/* ---------- SHA3-256 (Keccak, rate 136) ---------- */
+const MASK64 = 0xffffffffffffffffn;
+
+function rotl64(x, n) {
+  return ((x << BigInt(n)) | (x >> BigInt(64 - n))) & MASK64;
+}
+
+const KECCAK_RC = [
+  0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
+  0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
+  0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
+  0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
+  0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
+  0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n,
+];
+
+const KECCAK_ROT = [
+  0, 1, 62, 28, 27,
+  36, 44, 6, 55, 20,
+  3, 10, 43, 25, 39,
+  41, 45, 15, 21, 8,
+  18, 2, 61, 56, 14,
+];
+
+function keccakF1600(S) {
+  const C = new Array(5), D = new Array(5), B = new Array(25);
+  for (let round = 0; round < 24; round++) {
+    for (let x = 0; x < 5; x++) {
+      C[x] = S[x] ^ S[x + 5] ^ S[x + 10] ^ S[x + 15] ^ S[x + 20];
+    }
+    for (let x = 0; x < 5; x++) {
+      D[x] = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
+      for (let y = 0; y <= 20; y += 5) S[x + y] ^= D[x];
+    }
+    for (let x = 0; x < 5; x++) {
+      for (let y = 0; y < 5; y++) {
+        B[y + 5 * ((2 * x + 3 * y) % 5)] = rotl64(S[x + 5 * y], KECCAK_ROT[x + 5 * y]);
+      }
+    }
+    for (let x = 0; x < 5; x++) {
+      for (let y = 0; y < 5; y++) {
+        S[x + 5 * y] = B[x + 5 * y] ^ ((~B[(x + 1) % 5 + 5 * y]) & B[(x + 2) % 5 + 5 * y]);
+      }
+    }
+    S[0] ^= KECCAK_RC[round];
+  }
+}
+
+function sha3_256(input) {
+  const RATE = 136;
+  const S = new Array(25).fill(0n);
+  const nBlocks = Math.floor(input.length / RATE) + 1;
+  const padded = new Uint8Array(RATE * nBlocks);
+  padded.set(input, 0);
+  padded[input.length] ^= 0x06;
+  padded[padded.length - 1] ^= 0x80;
+  for (let b = 0; b < nBlocks; b++) {
+    for (let i = 0; i < RATE; i++) {
+      S[(i / 8) | 0] ^= BigInt(padded[b * RATE + i]) << BigInt(8 * (i % 8));
+    }
+    keccakF1600(S);
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    out[i] = Number((S[(i / 8) | 0] >> BigInt(8 * (i % 8))) & 0xffn);
+  }
+  return out;
+}
+
+/* ---------- BLAKE2b-512 (digest_size = 64, optional key) ---------- */
+const B2B_IV = [
+  0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+  0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n,
+];
+
+const B2B_SIGMA = [
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+  [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+  [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
+  [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+  [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+  [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+  [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
+  [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
+  [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
+  [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+  [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+];
+
+function blake2b512(input, key) {
+  const keyLen = key && key.length ? key.length : 0;
+  const h = B2B_IV.slice();
+  h[0] ^= BigInt(0x01010000 ^ (keyLen << 8) ^ 64);
+
+  const compress = (block, isFinal) => {
+    const m = new Array(16);
+    for (let i = 0; i < 16; i++) {
+      let v = 0n;
+      for (let j = 7; j >= 0; j--) v = (v << 8n) | BigInt(block[i * 8 + j]);
+      m[i] = v;
+    }
+    const v = new Array(16);
+    for (let i = 0; i < 8; i++) {
+      v[i] = h[i];
+      v[i + 8] = B2B_IV[i];
+    }
+    v[12] ^= total;
+    if (isFinal) {
+      v[14] = ~v[14] & MASK64;
+    }
+    const G = (a, b, c, d, x, y) => {
+      v[a] = (v[a] + v[b] + x) & MASK64;
+      v[d] = rotl64(v[d] ^ v[a], 32);
+      v[c] = (v[c] + v[d]) & MASK64;
+      v[b] = rotl64(v[b] ^ v[c], 40);
+      v[a] = (v[a] + v[b] + y) & MASK64;
+      v[d] = rotl64(v[d] ^ v[a], 48);
+      v[c] = (v[c] + v[d]) & MASK64;
+      v[b] = rotl64(v[b] ^ v[c], 1);
+    };
+    for (let r = 0; r < 12; r++) {
+      const s = B2B_SIGMA[r];
+      G(0, 4, 8, 12, m[s[0]], m[s[1]]);
+      G(1, 5, 9, 13, m[s[2]], m[s[3]]);
+      G(2, 6, 10, 14, m[s[4]], m[s[5]]);
+      G(3, 7, 11, 15, m[s[6]], m[s[7]]);
+      G(0, 5, 10, 15, m[s[8]], m[s[9]]);
+      G(1, 6, 11, 12, m[s[10]], m[s[11]]);
+      G(2, 7, 8, 13, m[s[12]], m[s[13]]);
+      G(3, 4, 9, 14, m[s[14]], m[s[15]]);
+    }
+    for (let i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
+  };
+
+  let total = 0n;
+  let lastFinal = false;
+
+  if (keyLen > 0) {
+    const kb = new Uint8Array(128);
+    kb.set(key, 0);
+    total += 128n;
+    lastFinal = input.length === 0;
+    compress(kb, lastFinal);
+  }
+
+  let off = 0;
+  while (off < input.length) {
+    if (input.length - off >= 128) {
+      total += 128n;
+      compress(input.subarray(off, off + 128), false);
+      lastFinal = false;
+      off += 128;
+    } else {
+      const last = new Uint8Array(128);
+      last.set(input.subarray(off), 0);
+      total += BigInt(input.length - off);
+      compress(last, true);
+      lastFinal = true;
+      off = input.length;
+    }
+  }
+  if (!lastFinal) {
+    compress(new Uint8Array(128), true);
+  }
+
+  const out = new Uint8Array(64);
+  for (let i = 0; i < 8; i++) {
+    for (let j = 0; j < 8; j++) {
+      out[i * 8 + j] = Number((h[i] >> BigInt(8 * j)) & 0xffn);
+    }
+  }
+  return out;
+}
+
+/* ---------- HMAC-SHA-256 via WebCrypto ---------- */
+async function hmacSha256(keyBytes, msgBytes) {
+  const subtle = globalThis.crypto && globalThis.crypto.subtle;
+  if (!subtle) throw new Error("WebCrypto is not available in this browser");
+  const k = await subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await subtle.sign("HMAC", k, msgBytes));
+}
+
+/* ---------- TwinSock share-link encryption ---------- */
+const C_BYTES = new TextEncoder().encode("socksicle::tws::v2");
+const PURPOSE_BYTES = new TextEncoder().encode("::purpose::share");
+const TAG_PREFIX = new TextEncoder().encode("tws-tag");
+
+function shareKeyToD(shareKey) {
+  try {
+    return b64urlDecode(shareKey);
+  } catch (e) {
+    return new TextEncoder().encode(shareKey);
+  }
+}
+
+async function deriveShareKey(shareKey) {
+  const d = shareKeyToD(shareKey);
+  const c = new Uint8Array(C_BYTES.length + PURPOSE_BYTES.length);
+  c.set(C_BYTES, 0);
+  c.set(PURPOSE_BYTES, C_BYTES.length);
+  return sha3_256(await hmacSha256(d, c));
+}
+
+function xorBytes(a, b) {
+  const out = new Uint8Array(Math.min(a.length, b.length));
+  for (let i = 0; i < out.length; i++) out[i] = a[i] ^ b[i];
+  return out;
+}
+
+async function blake2bStreamBytes(k, nonce, n) {
+  const stream = new Uint8Array(n);
+  const data = new Uint8Array(20);
+  data.set(nonce, 0);
+  const dv = new DataView(data.buffer);
+  let ctr = 0;
+  for (let i = 0; i < n; i += 64) {
+    dv.setUint32(16, ctr, true);
+    const block = blake2b512(data, k);
+    stream.set(block.subarray(0, Math.min(64, n - i)), i);
+    ctr++;
+  }
+  return stream;
+}
+
+async function encodeLink(shareKey, plaintext) {
+  const k = await deriveShareKey(shareKey);
+  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const pt = new TextEncoder().encode(plaintext);
+  const ct = xorBytes(pt, await blake2bStreamBytes(k, nonce, pt.length));
+
+  const tagMsg = new Uint8Array(TAG_PREFIX.length + 1 + nonce.length + ct.length);
+  tagMsg.set(TAG_PREFIX, 0);
+  tagMsg[TAG_PREFIX.length] = 0x02;
+  tagMsg.set(nonce, TAG_PREFIX.length + 1);
+  tagMsg.set(ct, TAG_PREFIX.length + 1 + nonce.length);
+  const tag = await hmacSha256(k, tagMsg);
+
+  const token = new Uint8Array(1 + nonce.length + tag.length + ct.length);
+  token[0] = 0x02;
+  token.set(nonce, 1);
+  token.set(tag, 1 + nonce.length);
+  token.set(ct, 1 + nonce.length + tag.length);
+
+  return "tws2://" + "tws2." + b64urlEncode(token);
+}
+
+function generateShareKey() {
+  return b64urlEncode(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+}
+
+function toHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ---------- UI ---------- */
+const keyInput = document.getElementById("key");
+const inputArea = document.getElementById("input");
+const outputArea = document.getElementById("output");
+const statusEl = document.getElementById("status");
+const encodeBtn = document.getElementById("encode");
+const copyBtn = document.getElementById("copy");
+
+function setStatus(text, kind) {
+  statusEl.textContent = text;
+  statusEl.className = "status" + (kind ? " " + kind : "");
+}
+
+function clearStatus() {
+  statusEl.textContent = "";
+}
+
+document.getElementById("genKey").addEventListener("click", () => {
+  keyInput.value = generateShareKey();
+  clearStatus();
+});
+
+encodeBtn.addEventListener("click", async () => {
+  const key = keyInput.value.trim();
+  if (!key) {
+    setStatus("Share key is empty — paste or generate a key first.", "error");
+    return;
+  }
+  const lines = inputArea.value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) {
+    setStatus("Nothing to encode — enter at least one ss://, vless://, vmess:// or subscription URL.", "error");
+    return;
+  }
+  encodeBtn.disabled = true;
+  try {
+    const encoded = [];
+    for (const line of lines) {
+      encoded.push(await encodeLink(key, line));
+    }
+    outputArea.value = encoded.join("\n");
+    setStatus("Encoded " + encoded.length + " link" + (encoded.length === 1 ? "" : "s") + ".", "ok");
+  } catch (err) {
+    setStatus("Encoding failed: " + err.message, "error");
+  } finally {
+    encodeBtn.disabled = false;
+  }
+});
+
+copyBtn.addEventListener("click", () => {
+  const text = outputArea.value;
+  if (!text) {
+    setStatus("Nothing to copy — encode some links first.", "error");
+    return;
+  }
+  const done = () => setStatus("Copied to clipboard.", "ok");
+  const fallback = () => {
+    outputArea.focus();
+    outputArea.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } catch (err) {
+      setStatus("Copy failed: " + err.message, "error");
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
+});
+
+/* ---------- Dev self-test (console only): known test vectors ---------- */
+(async () => {
+  try {
+    const enc = new TextEncoder();
+    const ok1 = toHex(sha3_256(new Uint8Array(0))) ===
+      "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a";
+    const ok2 = toHex(blake2b512(enc.encode("abc"), null)) ===
+      "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923";
+    const key = generateShareKey();
+    const token = await encodeLink(key, "ss://example");
+    const ok3 = token.startsWith("tws2://tws2.");
+    console.log("[TwinSock] SHA3-256 vector: " + (ok1 ? "PASS" : "FAIL"));
+    console.log("[TwinSock] BLAKE2b-512 vector: " + (ok2 ? "PASS" : "FAIL"));
+    console.log("[TwinSock] encode smoke test: " + (ok3 ? "PASS" : "FAIL"));
+    console.log("[TwinSock] self-test done: " + (ok1 && ok2 && ok3 ? "ALL PASS" : "FAILURES"));
+  } catch (err) {
+    console.error("[TwinSock] self-test error:", err);
+  }
+})();
+</script>
+</body>
+</html>

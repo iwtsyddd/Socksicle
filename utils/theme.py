@@ -1,8 +1,11 @@
 import subprocess
+import logging
 import os
-import sys
 from urllib.parse import unquote, urlparse
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
+
+log = logging.getLogger(__name__)
 
 class M3Theme:
     def __init__(self):
@@ -47,7 +50,8 @@ class M3Theme:
                 path = unquote(urlparse(out).path)
                 return path
             return out
-        except:
+        except (subprocess.SubprocessError, OSError, ValueError) as e:
+            log.debug("Could not detect wallpaper path: %s", e)
             return None
 
     def extract_dominant_color(self, image_path):
@@ -63,7 +67,7 @@ class M3Theme:
                 return None
             
             # Scale down significantly to analyze
-            small = img.scaled(50, 50, aspectMode=sys.modules['PySide6.QtCore'].Qt.IgnoreAspectRatio)
+            small = img.scaled(50, 50, aspectMode=Qt.IgnoreAspectRatio)
             
             max_saturation = -1
             best_color = None
@@ -83,7 +87,8 @@ class M3Theme:
             # Fallback to simple average if no saturated pixel found
             avg = img.scaled(1, 1).pixelColor(0, 0)
             return avg
-        except:
+        except (OSError, ValueError) as e:
+            log.debug("Could not extract dominant color: %s", e)
             return None
 
     def generate_palette(self, seed_color):

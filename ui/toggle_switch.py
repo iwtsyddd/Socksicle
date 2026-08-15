@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRect, QPointF
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRect
 from PySide6.QtGui import QPainter, QBrush, QColor
 
 class AnimatedToggleSwitch(QWidget):

@@ -26,7 +26,7 @@ mkdir -p "$ICON_DIR"
 mkdir -p "$DESKTOP_DIR"
 
 # Copy files
-cp -r ui utils main.py icon.png requirements.txt "$INSTALL_DIR/"
+cp -r ui utils main.py icon.png "$INSTALL_DIR/"
 
 # Create wrapper script
 cat > "$BIN_DIR/$BIN_NAME" <<EOF
