@@ -139,7 +139,8 @@ Files: `servers.json`, `subscriptions.json`, `settings.json`, `drawer.json`
 > the new vault on first read. Secrets are only as safe as the machine
 > itself; exports contain plain-text secrets and should not be shared.
 > `gen_url.html` (in the repo) is an offline tool for encoding links into
-> shareable `tws2://` tokens.
+> shareable `tws2://` tokens; the same generator is hosted online at
+> <https://iwtsyddd.github.io/TwinSockGen/>.
 
 ## Testing
 
