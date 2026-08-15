@@ -33,6 +33,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from utils.platform_utils import get_config_dir, is_windows
@@ -214,7 +215,11 @@ def kill_process(pid: int) -> bool:
             os.kill(pid, signal.SIGKILL)
     except (OSError, subprocess.SubprocessError):
         return False
-    return not process_alive(pid)
+    for _ in range(50):
+        if not process_alive(pid):
+            return True
+        time.sleep(0.05)
+    return False
 
 
 def cleanup_stale_engines(engine_names: list[str]) -> list[str]:
