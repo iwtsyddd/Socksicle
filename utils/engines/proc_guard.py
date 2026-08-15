@@ -123,6 +123,20 @@ def remove_pid_marker(engine_name: str) -> None:
         log.debug("Cannot remove pid marker for %s: %s", engine_name, e)
 
 
+def _is_zombie(pid: int) -> bool:
+    """Best-effort zombie check via /proc (POSIX only)."""
+    try:
+        with open(f"/proc/{int(pid)}/stat", "r", encoding="ascii") as f:
+            data = f.read()
+    except OSError:
+        return False
+    rpar = data.rfind(")")
+    if rpar == -1:
+        return False
+    rest = data[rpar + 1:].split()
+    return bool(rest) and rest[0] == "Z"
+
+
 def process_alive(pid: int) -> bool:
     """Return True when the process with this pid still exists."""
     if is_windows():
@@ -135,6 +149,8 @@ def process_alive(pid: int) -> bool:
         except (OSError, subprocess.SubprocessError):
             return False
         return f'"{pid}"' in (out.stdout or "")
+    if _is_zombie(pid):
+        return False
     try:
         os.kill(pid, 0)
         return True

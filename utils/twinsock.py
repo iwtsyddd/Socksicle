@@ -138,7 +138,8 @@ def _stream(k, nonce, n):
     ctr = 0
     while len(out) < n:
         out += hashlib.blake2b(
-            digest_size=64, key=k, data=nonce + ctr.to_bytes(4, "little")).digest()
+            nonce + ctr.to_bytes(4, "little"),
+            digest_size=64, key=k).digest()
         ctr += 1
     return bytes(out[:n])
 

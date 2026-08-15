@@ -5,6 +5,7 @@ process cleanup, using real short-lived subprocesses plus mocked
 tasklist/taskkill paths so every platform branch is exercised.
 """
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -161,6 +162,22 @@ class CleanupTest(unittest.TestCase):
 
     def test_missing_marker_noop(self):
         self.assertEqual(pg.cleanup_stale_engines(["xray", "sing-box"]), [])
+
+    @unittest.skipIf(os.name == "nt", "zombie semantics are POSIX-only")
+    def test_zombie_process_is_not_alive(self):
+        import time
+        proc = subprocess.Popen([sys.executable, "-c", "pass"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+        zombie = False
+        for _ in range(100):
+            if pg._is_zombie(proc.pid):
+                zombie = True
+                break
+            time.sleep(0.02)
+        self.assertTrue(zombie)
+        self.assertFalse(pg.process_alive(proc.pid))
+        proc.wait(timeout=10)
 
     def test_kill_failure_keeps_marker(self):
         proc = _sleep_proc()

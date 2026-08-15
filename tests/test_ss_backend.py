@@ -167,6 +167,9 @@ class FindSSLocalTest(unittest.TestCase):
         self._patch_which(None)
         self.assertIsNone(ss_backend.find_sslocal())
 
+    @unittest.skipIf(os.name != "nt",
+                     "flat file and engine subdir share a name only on Windows "
+                     "(app/bin/sslocal vs app/bin/sslocal/)")
     def test_flat_app_bin_preferred_over_subdir(self):
         expected = _make_file(self.app_bin_path)
         _make_file(self.root / "app" / "bin" / "sslocal" / self.app_bin_path.name)

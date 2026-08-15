@@ -432,6 +432,9 @@ class XrayEngineBinaryTest(unittest.TestCase):
             result = common._find_binary("xray")
         self.assertEqual(result, fake)
 
+    @unittest.skipIf(os.name != "nt",
+                     "flat file and engine subdir share a name only on Windows "
+                     "(bin/xray vs bin/xray/)")
     def test_find_binary_prefers_flat_bin_over_subdir(self):
         expected = _make_file(self.root / "bin"
                               / common._binary_name("xray"))
