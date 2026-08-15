@@ -18,6 +18,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
+*.whl
 .installed.cfg
 *.egg
 .venv
@@ -25,10 +26,37 @@ venv/
 venv.bak/
 ENV/
 
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env
+
 # Configuration/Data
 servers.json
 settings.json
+subscriptions.json
+drawer.json
 .config/
+
+# Engines (auto-downloaded on first run)
+bin/
+
+# Local build artifacts
+Socksicle_latest_setup.exe
+*.setup.exe
 
 # OS
 .DS_Store
