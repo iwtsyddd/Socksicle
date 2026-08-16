@@ -1,13 +1,13 @@
 # Socksicle 🧦🧊
 
 Socksicle is a multi-protocol proxy client for **Linux and Windows**, built with
-PySide6 (Qt 6). It features a clean Material Design 3 inspired interface and a
+PySide6 (Qt 6). It features a clean Material You (M3) inspired interface and a
 pluggable engine backend that supports **Shadowsocks, VLESS and VMess** through
 `sslocal` (shadowsocks-rust), Xray-core, or sing-box.
 
 ## Features
 
-- **Material Design 3 interface**: frameless rounded window, animated toggles
+- **Material You (M3) interface**: frameless rounded window, animated toggles
   and cards, light/dark-aware styling.
 - **Multi-protocol support**: `ss://`, `vless://`, `vmess://`, `hysteria2://` and `hy2://` links, with a
   per-server protocol badge (e.g. `VLESS · Reality · WS`, `HY2`).
