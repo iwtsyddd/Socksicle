@@ -1,13 +1,15 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QFrame)
 from PySide6.QtCore import Qt
 
+from utils.window_utils import configure_window
+
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None, theme=None):
         super().__init__(parent)
         self.theme = theme
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.Dialog)
+        configure_window(self)
 
         self.main_layout = QVBoxLayout(self)
         self.container = QFrame()

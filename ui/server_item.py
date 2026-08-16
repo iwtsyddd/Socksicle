@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property
 from PySide6.QtGui import QColor, QPainter, QBrush, QFont, QPixmap, QPen
 import qrcode
 
+from utils.window_utils import configure_window
+
 
 class AnimatedRadioButton(QRadioButton):
     """Material 3 Card Radio Button with tonal hover and selection indicator."""
@@ -188,8 +190,8 @@ class ServerItem(QFrame):
         qr_img = qrcode.make(self.server.key)
         img = qr_img.toqimage()
         d = QDialog(self)
-        d.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        d.setAttribute(Qt.WA_TranslucentBackground)
+        d.setWindowFlags(Qt.Dialog)
+        configure_window(d)
 
         container = QFrame(d)
         container.setStyleSheet(f"""

@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import threading
 import time
 
@@ -347,6 +348,7 @@ class RoundedWindow(QWidget):
 
     def on_vpn_switch_clicked(self, e):
         if e.button() == Qt.LeftButton:
+            e.accept()
             self.toggle_connection()
 
     def _ensure_backend(self):
@@ -414,16 +416,36 @@ class RoundedWindow(QWidget):
             connect = not self.connection_manager.is_connected
         if connect:
             if self.settings.get("tun_mode", False):
-                from utils.platform_utils import is_admin, elevate_restart
-                if not is_admin() and sys.platform == "win32":
-                    reply = QMessageBox.question(
-                        self, "Administrator Privileges Required",
-                        "TUN Mode (Global VPN) requires Administrator privileges to configure virtual network adapters and routing tables.\n\n"
-                        "Would you like to restart Socksicle as Administrator now?",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.Yes)
-                    if reply == QMessageBox.Yes:
-                        elevate_restart()
+                from utils.platform_utils import is_admin, elevate_restart, is_windows
+                if not is_admin():
+                    if is_windows():
+                        reply = QMessageBox.question(
+                            self, "Administrator Privileges Required",
+                            "TUN Mode (Global VPN) requires Administrator privileges to configure virtual network adapters and routing tables.\n\n"
+                            "Would you like to restart Socksicle as Administrator now?",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes)
+                        if reply == QMessageBox.Yes:
+                            elevate_restart()
+                    else:
+                        reply = QMessageBox.question(
+                            self, "Root Privileges Required",
+                            "TUN Mode (Global VPN) requires root privileges to "
+                            "create the virtual interface and configure routing.\n\n"
+                            "Would you like to restart Socksicle as root now "
+                            "(via pkexec/sudo)?",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes)
+                        if reply == QMessageBox.Yes:
+                            if not elevate_restart():
+                                QMessageBox.warning(
+                                    self, "Cannot Elevate",
+                                    "TUN Mode requires root privileges, but "
+                                    "elevation is unavailable on this system "
+                                    "(no pkexec or sudo).\n\n"
+                                    "Run Socksicle as root to use TUN Mode, or "
+                                    "disable TUN Mode and use a SOCKS5 "
+                                    "connection instead.")
                     return
             if not self._ensure_backend():
                 return

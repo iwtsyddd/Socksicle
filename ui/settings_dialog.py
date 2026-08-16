@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from utils.sub_manager import USER_AGENT_PRESETS
+from utils.window_utils import configure_window
 from utils.engines.base import DEFAULT_LOCAL_PORT
 from utils.ping import DEFAULT_PING_METHOD
 from utils.theme import THEME_PRESETS
@@ -33,9 +34,10 @@ class SettingsDialog(QDialog):
         self._drag_pos = None
         current_port = current_port or str(DEFAULT_LOCAL_PORT)
 
-        # Standalone frameless window with independent taskbar presence and translucent background
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        # Standalone frameless window with independent taskbar presence (the translucent
+        # background is applied by configure_window only when the session can composite).
+        self.setWindowFlags(Qt.Window)
+        configure_window(self)
         self.resize(480, 680)
         self.setMinimumSize(420, 520)
 
@@ -43,8 +45,14 @@ class SettingsDialog(QDialog):
         self.main_layout.setContentsMargins(12, 12, 12, 12)
 
         self.container = QFrame()
+        self.container.setObjectName("SettingsContainer")
+
+        combo_bg = getattr(theme, "surface_container_highest", theme.surface_variant)
+        combo_border = getattr(theme, "outline_variant", "#44424B")
+        popup_bg = getattr(theme, "surface_container_high", theme.surface)
+
         self.container.setStyleSheet(f"""
-            QFrame {{
+            QFrame#SettingsContainer {{
                 background-color: {theme.surface};
                 border-radius: 28px;
                 border: none;
@@ -63,9 +71,9 @@ class SettingsDialog(QDialog):
                 border: 1px solid {theme.primary};
             }}
             QComboBox {{
-                background-color: {getattr(theme, 'surface_container_highest', theme.surface_variant)};
+                background-color: {combo_bg};
                 color: {theme.on_surface};
-                border: 1px solid {getattr(theme, 'outline_variant', '#44424B')};
+                border: 1px solid {combo_border};
                 border-radius: 10px;
                 padding: 6px 12px;
                 font-size: 13px;
@@ -81,7 +89,19 @@ class SettingsDialog(QDialog):
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 24px;
+                background-color: {combo_bg};
                 border: none;
+                border-left: 1px solid {combo_border};
+                border-top-right-radius: 10px;
+                border-bottom-right-radius: 10px;
+            }}
+            QComboBox::drop-down:hover {{
+                background-color: {combo_bg};
+                border-left: 1px solid {theme.outline};
+            }}
+            QComboBox::drop-down:pressed {{
+                background-color: {combo_bg};
+                border-left: 1px solid {theme.primary};
             }}
             QComboBox::down-arrow {{
                 image: none;
@@ -92,10 +112,15 @@ class SettingsDialog(QDialog):
                 height: 0px;
                 margin-right: 8px;
             }}
+            QComboBox QFrame {{
+                background-color: {popup_bg};
+                border: 1px solid {combo_border};
+                border-radius: 10px;
+            }}
             QComboBox QAbstractItemView {{
-                background-color: {getattr(theme, 'surface_container_high', theme.surface)};
+                background-color: {popup_bg};
                 color: {theme.on_surface};
-                border: 1px solid {getattr(theme, 'outline_variant', '#44424B')};
+                border: 1px solid {combo_border};
                 border-radius: 10px;
                 padding: 4px;
                 selection-background-color: {getattr(theme, 'primary_container', theme.primary)};

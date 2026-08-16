@@ -1,7 +1,7 @@
-"""Windows-specific startup behavior, isolated behind small functions.
+"""Platform-specific startup behavior, isolated behind small functions.
 
 The shared entry point (:mod:`main`) runs the same flow on every platform
-and delegates the Windows-only pieces here:
+and delegates the platform-specific pieces here:
 
     application start
       -> platform initialization (env, logging, user model id, excepthook)
@@ -10,11 +10,12 @@ and delegates the Windows-only pieces here:
       -> install tray/power handlers if supported
       -> start Qt event loop
 
-On non-Windows platforms every helper degrades to a safe no-op, so Linux
-startup and logging behavior stays unchanged.  Windows keeps its high-DPI
-environment, file logging, AppUserModelID, unhandled-exception hook, tray
-persistence across Explorer restarts (WM_TASKBARCREATED) and reconnect
-after sleep/hibernate resume (WM_POWERBROADCAST).
+File logging and the unhandled-exception hook run on every platform so
+runtime failures stay visible on Linux too; only Windows keeps its high-DPI
+environment, AppUserModelID, tray persistence across Explorer restarts
+(WM_TASKBARCREATED) and reconnect after sleep/hibernate resume
+(WM_POWERBROADCAST).  Every Windows-only helper degrades to a safe no-op
+elsewhere.
 """
 import os
 import sys
@@ -74,14 +75,16 @@ class TrayAndPowerFilter(QAbstractNativeEventFilter):
 
 
 def initialize():
-    """Windows startup init: logging, app user model id, excepthook.
+    """Per-platform startup init.
 
-    No-op on other platforms, matching the previous Linux entry point.
+    Logging and the unhandled-exception hook run on every platform; the
+    AppUserModelID is set on Windows only.
     """
-    if not is_windows():
-        return
     setup_logging()
-    logging.getLogger("start_win").info("Launching Socksicle on Windows")
+    logging.getLogger("startup").info(
+        "Launching Socksicle on %s",
+        "Windows" if is_windows() else "Linux",
+    )
     set_app_user_model_id()
     install_excepthook()
 
@@ -99,9 +102,7 @@ def set_app_user_model_id():
 
 
 def install_excepthook():
-    """Route unhandled exceptions through logging and stderr."""
-    if not is_windows():
-        return
+    """Route unhandled exceptions through logging and stderr on all platforms."""
 
     def excepthook(exc_type, exc_value, exc_tb):
         logging.getLogger("unhandled").critical(

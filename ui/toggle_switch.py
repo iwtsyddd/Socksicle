@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRectF
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, Property, QRectF, Slot
 from PySide6.QtGui import QPainter, QBrush, QColor, QPen
 
 
@@ -56,6 +56,8 @@ class AnimatedToggleSwitch(QWidget):
         p.setBrush(QBrush(thumb_on if self._enabled else thumb_off))
         p.drawEllipse(QRectF(self._thumb_position, thumb_y, thumb_size, thumb_size))
 
+    @Slot()
+    @Slot(bool)
     def toggle(self, enable=None):
         if enable is not None:
             if self._enabled == enable:

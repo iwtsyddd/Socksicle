@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButt
 from PySide6.QtCore import Qt
 
 from utils.server_model import ProxyProtocol
+from utils.window_utils import configure_window
 
 
 _PROTOCOL_HINTS = {
@@ -21,8 +22,8 @@ class AddServerDialog(QDialog):
     def __init__(self, parent=None, theme=None):
         super().__init__(parent)
         self.theme = theme
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.Dialog)
+        configure_window(self)
 
         self.main_layout = QVBoxLayout(self)
         self.container = QFrame()

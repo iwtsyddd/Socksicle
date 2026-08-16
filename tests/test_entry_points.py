@@ -182,7 +182,7 @@ class LinuxPathTest(unittest.TestCase):
         app_inst = mock.Mock(spec=[
             "setApplicationName", "setDesktopFileName", "setWindowIcon",
             "setHighDpiScaleFactorRoundingPolicy", "installNativeEventFilter",
-            "exec",
+            "setStyle", "setPalette", "exec",
         ])
         app_inst.exec.return_value = 0
         with mock.patch.object(main, "QApplication",
@@ -204,6 +204,12 @@ class LinuxPathTest(unittest.TestCase):
             "Socksicle.desktop")
         app_inst.setHighDpiScaleFactorRoundingPolicy.assert_not_called()
         app_inst.installNativeEventFilter.assert_not_called()
+        if sys.platform == "win32":
+            app_inst.setStyle.assert_not_called()
+            app_inst.setPalette.assert_not_called()
+        else:
+            app_inst.setStyle.assert_called_once_with("Fusion")
+            app_inst.setPalette.assert_called_once()
         self.assertNotIn("native_filter", app_inst._mock_children)
 
 

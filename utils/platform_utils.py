@@ -58,33 +58,62 @@ def find_sslocal() -> Path | None:
 
 
 def is_admin() -> bool:
-    """Best-effort Windows admin check. Returns False off-Windows."""
-    if not is_windows():
-        return False
-    try:
-        import ctypes
-        return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except (AttributeError, OSError) as e:
-        log.debug("Admin check failed: %s", e)
-        return False
+    """Best-effort elevated-privilege check.
+
+    Windows: checks the UAC admin token. Linux: checks EUID 0 (root).
+    Returns False when the check is unavailable or the process is not elevated.
+    """
+    if is_windows():
+        try:
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except (AttributeError, OSError) as e:
+            log.debug("Admin check failed: %s", e)
+            return False
+    if is_linux():
+        geteuid = getattr(os, "geteuid", None)
+        if geteuid is None:
+            return False
+        return geteuid() == 0
+    return False
 
 
 def elevate_restart() -> bool:
-    """Restart the current application with Administrator privileges on Windows."""
-    if not is_windows():
+    """Restart the current application with elevated privileges.
+
+    Windows: relaunches via UAC (ShellExecuteW "runas").
+    Linux: relaunches as root via pkexec, falling back to sudo.
+    Returns False when elevation is not available or fails.
+    """
+    if is_windows():
+        try:
+            import ctypes
+            params = " ".join(f'"{a}"' for a in sys.argv[1:])
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, f'"{sys.argv[0]}" {params}'.strip(), None, 1
+            )
+            if int(ret) > 32:
+                sys.exit(0)
+            return False
+        except Exception as e:
+            log.warning("Elevation restart failed: %s", e)
+            return False
+
+    if is_linux():
+        import shutil
+        launcher_args = [sys.executable, sys.argv[0], *sys.argv[1:]]
+        for launcher in ("pkexec", "sudo"):
+            if shutil.which(launcher) is None:
+                continue
+            try:
+                subprocess.Popen([launcher, *launcher_args])
+                log.info("Restarting with elevated privileges via %s", launcher)
+                sys.exit(0)
+            except (OSError, subprocess.SubprocessError) as e:
+                log.warning("Elevation restart failed with %s: %s", launcher, e)
         return False
-    try:
-        import ctypes
-        params = " ".join(f'"{a}"' for a in sys.argv[1:])
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{sys.argv[0]}" {params}'.strip(), None, 1
-        )
-        if int(ret) > 32:
-            sys.exit(0)
-        return False
-    except Exception as e:
-        log.warning("Elevation restart failed: %s", e)
-        return False
+
+    return False
 
 
 def windows_dark_mode() -> bool | None:

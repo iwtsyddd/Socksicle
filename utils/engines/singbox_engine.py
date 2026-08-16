@@ -360,6 +360,28 @@ def _generate_config(server, local_port, tun_mode=False) -> dict:
     return config
 
 
+def _tun_device_check() -> tuple[bool, str]:
+    """Check whether the Linux TUN device is present and usable.
+
+    Returns (ok, message); on non-Linux platforms always ok.
+    """
+    if sys.platform == "win32":
+        return True, ""
+    if not os.path.exists("/dev/net/tun"):
+        return False, (
+            "TUN Mode requires the Linux /dev/net/tun device, which is "
+            "missing on this system. Enable it (e.g. 'modprobe tun') and "
+            "ensure the TUN kernel module is loaded, then try again."
+        )
+    if not os.access("/dev/net/tun", os.R_OK | os.W_OK):
+        return False, (
+            "TUN Mode requires read/write access to /dev/net/tun, which "
+            "current user lacks. Run Socksicle as root, or add your user "
+            "to the tun device group, then try again."
+        )
+    return True, ""
+
+
 class SingBoxEngine(ProxyEngine):
     engine_type = EngineType.SINGBOX
 
@@ -383,6 +405,11 @@ class SingBoxEngine(ProxyEngine):
     def start(self, server):
         if self.tun_mode:
             self._clean_stale_tun_adapter()
+            ok, reason = _tun_device_check()
+            if not ok:
+                log.error("TUN start blocked: %s", reason)
+                self.statusChanged.emit(f"Connection failed: {reason}", True)
+                return False
         return super().start(server)
 
     def teardown(self):

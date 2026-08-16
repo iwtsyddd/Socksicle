@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt
 
+from utils.window_utils import configure_window
+
 
 class ConnectionLogDialog(QDialog):
     """Standalone Material 3 Connection Log Viewer."""
@@ -17,8 +19,8 @@ class ConnectionLogDialog(QDialog):
         self._drag_pos = None
 
         # Standalone frameless window with independent taskbar presence
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.Window)
+        configure_window(self)
         self.resize(560, 520)
         self.setMinimumSize(440, 360)
 

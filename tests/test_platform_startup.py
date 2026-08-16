@@ -160,7 +160,7 @@ class InstallNativeHandlersTest(unittest.TestCase):
 
 
 class ExcepthookTest(unittest.TestCase):
-    """The unhandled-exception hook is Windows-only and logs safely."""
+    """The unhandled-exception hook runs on every platform and logs safely."""
 
     def setUp(self):
         self._original_hook = sys.excepthook
@@ -187,6 +187,24 @@ class ExcepthookTest(unittest.TestCase):
         self.assertIn("exc_info", logger.critical.call_args.kwargs)
         traceback_print.assert_called_once()
 
+    def test_linux_installs_hook_that_logs_and_prints(self):
+        with mock.patch.object(platform_startup, "is_windows",
+                               return_value=False):
+            platform_startup.install_excepthook()
+        self.assertIsNot(sys.excepthook, self._original_hook)
+
+        logger = mock.Mock()
+        traceback_print = mock.Mock()
+        with mock.patch.object(platform_startup.logging, "getLogger",
+                               return_value=logger), \
+             mock.patch.object(platform_startup.traceback,
+                               "print_exception",
+                               side_effect=traceback_print):
+            sys.excepthook(ValueError, ValueError("boom"), None)
+        logger.critical.assert_called_once()
+        self.assertIn("exc_info", logger.critical.call_args.kwargs)
+        traceback_print.assert_called_once()
+
     def test_hook_tolerates_stderr_failure(self):
         with mock.patch.object(platform_startup, "is_windows",
                                return_value=True):
@@ -196,12 +214,6 @@ class ExcepthookTest(unittest.TestCase):
                                "print_exception",
                                side_effect=RuntimeError("stderr gone")):
             sys.excepthook(ValueError, ValueError("boom"), None)  # no raise
-
-    def test_linux_does_not_touch_excepthook(self):
-        with mock.patch.object(platform_startup, "is_windows",
-                               return_value=False):
-            platform_startup.install_excepthook()
-        self.assertIs(sys.excepthook, self._original_hook)
 
 
 class DesktopFileNameTest(unittest.TestCase):

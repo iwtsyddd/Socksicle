@@ -5,6 +5,53 @@ All notable changes to Socksicle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-16
+
+> **Linux reliability patch.** Socksicle fixes the power toggle silently doing
+> nothing on Linux (a swallowed `NameError` in the TUN path), makes the settings
+> dropdowns render opaquely instead of turning transparent, brings file logging
+> and an unhandled-exception hook to Linux, and gives the app a consistent
+> Fusion dark theme on Linux desktops.
+
+### Added
+
+- 🐧 **Linux logging & crash visibility**: file logging and the unhandled-
+  exception hook now run on Linux too (`~/.config/socksicle/socksicle/logs/`),
+  so startup and runtime errors are no longer invisible —
+  `utils/platform_startup.py`.
+- 🎨 **Consistent Linux theming**: on non-Windows platforms the app forces the
+  `Fusion` style with a Material 3 dark `QPalette`, so widgets no longer depend
+  on the desktop theme — `main.py`.
+- 🪟 **Platform-aware translucent windows**: the frameless window attributes are
+  now decided per session (compositing-safe on Windows/Wayland; opaque fallback
+  on bare X11, override with `SOCKSICLE_TRANSLUCENT=0`) —
+  `utils/window_utils.py`.
+- 🛡️ TUN Mode reports a readable error when `/dev/net/tun` is missing or
+  unusable instead of failing silently — `utils/engines/singbox_engine.py`.
+
+### Changed
+
+- 🔧 `is_admin()` / `elevate_restart()` now cover Linux (`geteuid`, `pkexec`
+  with a `sudo` fallback) while the Windows paths stay untouched —
+  `utils/platform_utils.py`.
+
+### Fixed
+
+- 🧯 Fixed the VPN power toggle appearing dead on Linux: the connect handler
+  referenced `sys.platform` without importing `sys`, raising a `NameError` that
+  Qt silently swallowed whenever TUN Mode was enabled — `ui/main_window.py`.
+- 🧯 TUN Mode now works on Linux: root is detected via `geteuid`, elevation goes
+  through `pkexec`/`sudo`, and both the privilege prompt and the failure dialog
+  are explained in plain language instead of failing silently —
+  `utils/platform_utils.py`, `ui/main_window.py`.
+- 🧯 Fixed the settings dropdowns (QComboBox) rendering transparent on Linux:
+  the `::drop-down` column, the popup container and the item-view corners are now
+  painted with opaque theme colors, and the dialog-card `QFrame` rule no longer
+  leaks into the popup — `ui/settings_dialog.py`.
+- 🧯 The toggle switch now reliably flips back OFF when a connection fails; the
+  `QMetaObject.invokeMethod` call targets a real `@Slot(bool)` —
+  `ui/toggle_switch.py`, `ui/main_window.py`.
+
 ## [1.4] - 2026-08-16
 
 > **Current release.** Socksicle introduces Material You (Material 3) dynamic theming

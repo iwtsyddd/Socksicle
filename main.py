@@ -24,6 +24,49 @@ from utils.startup_utils import (DECLINED_REASON, provision_backend,
                                  show_provisioning_failure)
 
 
+def _apply_platform_style(app):
+    """Non-Windows: consistent Fusion style + M3 dark palette.
+
+    Widgets not fully covered by per-widget QSS can otherwise fall back to
+    whatever the desktop QPA theme provides (invisible text, transparent
+    widgets), so pin a coherent dark look instead.  Windows keeps its native
+    look and is skipped.  A palette failure must never prevent startup.
+    """
+    if sys.platform == "win32":
+        return
+    try:
+        from PySide6.QtGui import QColor, QPalette
+
+        from utils.theme import M3Theme
+
+        theme = M3Theme()
+        palette = QPalette()
+        roles = {
+            QPalette.ColorRole.Window: theme.surface,
+            QPalette.ColorRole.WindowText: theme.on_surface,
+            QPalette.ColorRole.Base: theme.surface_container_highest,
+            QPalette.ColorRole.AlternateBase: theme.surface_container,
+            QPalette.ColorRole.ToolTipBase: theme.surface_container_highest,
+            QPalette.ColorRole.ToolTipText: theme.on_surface,
+            QPalette.ColorRole.Text: theme.on_surface,
+            QPalette.ColorRole.Button: theme.surface_container_high,
+            QPalette.ColorRole.ButtonText: theme.on_surface,
+            QPalette.ColorRole.BrightText: theme.error,
+            QPalette.ColorRole.Highlight: theme.primary,
+            QPalette.ColorRole.HighlightedText: theme.on_primary,
+            QPalette.ColorRole.Link: theme.primary,
+            QPalette.ColorRole.PlaceholderText: theme.on_surface_variant,
+        }
+        for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive,
+                      QPalette.ColorGroup.Disabled):
+            for role, color in roles.items():
+                palette.setColor(group, role, QColor(color))
+        app.setStyle("Fusion")
+        app.setPalette(palette)
+    except Exception:
+        pass
+
+
 def main():
     initialize()
     apply_high_dpi_policy()
@@ -31,6 +74,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Socksicle")
     app.setDesktopFileName(desktop_file_name())
+    _apply_platform_style(app)
 
     # Set icon
     icon_path = get_app_dir() / "icon.png"
