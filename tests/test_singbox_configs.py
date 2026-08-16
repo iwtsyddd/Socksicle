@@ -369,5 +369,67 @@ class SingBoxTransportTest(unittest.TestCase):
         self.assertNotIn("service_name", tr)
 
 
+class SingBoxTunConfigTest(unittest.TestCase):
+
+    def test_tun_mode_generates_tun_inbound_and_dns(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.SHADOWSOCKS,
+            host="1.2.3.4", port=8388,
+            method="aes-256-gcm", password="secret",
+        )
+        config = _generate_config(server, 1080, tun_mode=True)
+        self.assertIn("dns", config)
+        self.assertEqual(config["dns"]["servers"][0]["type"], "https")
+        self.assertEqual(config["dns"]["servers"][0]["server"], "1.1.1.1")
+        self.assertEqual(config["dns"]["servers"][1]["type"], "local")
+        self.assertEqual(len(config["inbounds"]), 2)
+        tun_in = config["inbounds"][0]
+        self.assertEqual(tun_in["type"], "tun")
+        self.assertTrue(tun_in["interface_name"].startswith("socksicle-"))
+        self.assertEqual(tun_in["address"], ["172.19.0.1/30"])
+        self.assertTrue(tun_in["auto_route"])
+        self.assertFalse(tun_in["strict_route"])
+        self.assertEqual(tun_in["stack"], "system")
+        mixed_in = config["inbounds"][1]
+        self.assertEqual(mixed_in["type"], "mixed")
+        self.assertEqual(mixed_in["listen_port"], 1080)
+        self.assertEqual(config["route"]["default_domain_resolver"], "remote-dns")
+        self.assertEqual(config["route"]["rules"][0]["action"], "sniff")
+        self.assertEqual(config["route"]["rules"][1]["protocol"], "dns")
+        self.assertEqual(config["route"]["rules"][1]["action"], "hijack-dns")
+
+    def test_singbox_engine_process_name_with_tun(self):
+        engine = SingBoxEngine()
+        self.assertEqual(engine.process_name(), "sing-box")
+        engine.tun_mode = True
+        self.assertEqual(engine.process_name(), "sing-box (TUN)")
+
+    def test_singbox_binary_validates_configs(self):
+        """If sing-box.exe binary is present, validate generated configs using `sing-box check`."""
+        engine = SingBoxEngine()
+        binary = engine.find_binary()
+        if not binary or not binary.exists():
+            return
+        import subprocess
+        for proto in (ProxyProtocol.SHADOWSOCKS, ProxyProtocol.VLESS, ProxyProtocol.VMESS, ProxyProtocol.HYSTERIA2):
+            for tun in (False, True):
+                srv = _FakeServer(
+                    protocol=proto, host="1.2.3.4", port=443,
+                    password="pass", method="aes-256-gcm", uuid="11111111-1111-1111-1111-111111111111",
+                    flow="", security="none", transport="tcp", server_name="", fingerprint="",
+                    public_key="", short_id="", path="", host_header=""
+                )
+                cfg = _generate_config(srv, 1080, tun_mode=tun)
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                    json.dump(cfg, f)
+                    temp_name = f.name
+                try:
+                    res = subprocess.run([str(binary), "check", "-c", temp_name], capture_output=True, text=True)
+                    self.assertEqual(res.returncode, 0, f"sing-box check failed for {proto} tun={tun}: {res.stderr}")
+                finally:
+                    if os.path.exists(temp_name):
+                        os.remove(temp_name)
+
+
 if __name__ == "__main__":
     unittest.main()

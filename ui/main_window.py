@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import time
 
 from PySide6.QtWidgets import (
@@ -39,7 +40,10 @@ class RoundedWindow(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.theme = M3Theme()
+        self.server_manager = ServerManager()
+        self.manual_servers = self.server_manager.manual_servers
+        self.settings = self.server_manager.settings
+        self.theme = M3Theme(preset_key=self.settings.get("theme_preset", "dynamic"))
         self.current_tab = "Manual"
         
         self.setWindowFlags(Qt.FramelessWindowHint)
@@ -51,9 +55,6 @@ class RoundedWindow(QWidget):
 
         self.setup_tray_icon()
 
-        self.server_manager = ServerManager()
-        self.manual_servers = self.server_manager.manual_servers
-        self.settings = self.server_manager.settings
         self.subscription_manager = SubscriptionManager(self.settings)
         self.connection_manager = ConnectionManager(self.settings)
         self.connection_manager.apply_settings(self.settings)
@@ -78,12 +79,18 @@ class RoundedWindow(QWidget):
         self.notice_timer = QTimer(self)
         self.notice_timer.setSingleShot(True)
         self.notice_timer.timeout.connect(self._clear_port_change_notice)
+
+        # Hot-plug system accent / wallpaper live monitor
+        self.accent_poll_timer = QTimer(self)
+        self.accent_poll_timer.setInterval(2500)
+        self.accent_poll_timer.timeout.connect(self._check_accent_hotplug)
+        self.accent_poll_timer.start()
         
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(12, 12, 12, 12)
         self.container = QFrame()
         self.container.setStyleSheet(
-            f"background-color: {self.theme.surface}; border-radius: 32px; border: none;")
+            f"background-color: {self.theme.surface}; border-radius: 32px; border: none; outline: none;")
         self.main_layout.addWidget(self.container)
         self.layout = QVBoxLayout(self.container)
         self.layout.setContentsMargins(20, 16, 20, 20)
@@ -133,26 +140,32 @@ class RoundedWindow(QWidget):
 
         self.action_bar = QHBoxLayout()
         self.add_btn = QPushButton("+ Add")
+        self.add_btn.setFocusPolicy(Qt.NoFocus)
         self.add_btn.setStyleSheet(self.theme.get_button_style("tonal"))
         self.add_btn.clicked.connect(self.show_add_dialog)
         self.export_btn = QPushButton("📤")
+        self.export_btn.setFocusPolicy(Qt.NoFocus)
         self.export_btn.setToolTip("Export Profiles")
         self.export_btn.setStyleSheet(self.theme.get_button_style("text"))
         self.export_btn.setFixedSize(40, 40)
         self.export_btn.clicked.connect(self.export_profiles)
         self.import_btn = QPushButton("📥")
+        self.import_btn.setFocusPolicy(Qt.NoFocus)
         self.import_btn.setToolTip("Import Profiles")
         self.import_btn.setStyleSheet(self.theme.get_button_style("text"))
         self.import_btn.setFixedSize(40, 40)
         self.import_btn.clicked.connect(self.import_profiles)
         self.update_sub_btn = QPushButton("🔄 Update")
+        self.update_sub_btn.setFocusPolicy(Qt.NoFocus)
         self.update_sub_btn.setStyleSheet(self.theme.get_button_style("text"))
         self.update_sub_btn.clicked.connect(self.update_current_subscription)
         self.update_sub_btn.hide()
         self.ping_all_btn = QPushButton("⚡ Ping All")
+        self.ping_all_btn.setFocusPolicy(Qt.NoFocus)
         self.ping_all_btn.setStyleSheet(self.theme.get_button_style("text"))
         self.ping_all_btn.clicked.connect(self.ping_all_servers)
         self.del_sub_btn = QPushButton("🗑 Sub")
+        self.del_sub_btn.setFocusPolicy(Qt.NoFocus)
         self.del_sub_btn.setStyleSheet(self.theme.get_button_style("text"))
         self.del_sub_btn.clicked.connect(self.delete_current_subscription)
         self.del_sub_btn.hide()
@@ -169,14 +182,14 @@ class RoundedWindow(QWidget):
         self.search_bar.setPlaceholderText("Search servers...")
         self.search_bar.setStyleSheet(
             f"background: {self.theme.surface_variant}; color: {self.theme.on_surface};"
-            f" padding: 8px 12px; border-radius: 12px; border: none; margin-top: 4px;")
+            f" padding: 8px 12px; border-radius: 12px; border: none; margin-top: 4px; outline: none;")
         self.search_bar.textChanged.connect(self.filter_servers)
         self.layout.addWidget(self.search_bar)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet(
-            f"QScrollArea {{ background: transparent; border: none; }}"
+            f"QScrollArea {{ background: transparent; border: none; outline: none; }}"
             f" QScrollBar:vertical {{ border: none; background: transparent; width: 6px; }}"
             f" QScrollBar::handle:vertical {{ background: {self.theme.surface_variant};"
             f" border-radius: 3px; min-height: 30px; }}")
@@ -201,22 +214,40 @@ class RoundedWindow(QWidget):
         self.refresh_server_list()
         self._dragging = False
 
+    def _check_accent_hotplug(self):
+        """Poll for Windows/system accent color or wallpaper change and hot-reload theme."""
+        if self.theme.check_system_accent_changed():
+            self.apply_theme_styles()
+
     def setup_header(self):
         header = QHBoxLayout()
-        title = QLabel("Socksicle")
-        title.setStyleSheet(
-            f"color: {self.theme.on_surface}; font-size: 22px; font-weight: 600;")
-        header.addWidget(title)
+        self.title_label = QLabel("Socksicle")
+        self.title_label.setFocusPolicy(Qt.NoFocus)
+        self.title_label.setStyleSheet(
+            f"color: {self.theme.on_surface}; font-size: 22px; font-weight: 600; border: none; background: transparent; outline: none;")
+        header.addWidget(self.title_label)
         header.addStretch()
-        for txt, cmd in [("—", self.showMinimized), ("✕", self.close)]:
-            btn = QPushButton(txt)
-            btn.setFixedSize(36, 36)
-            btn.setStyleSheet(
-                f"QPushButton {{ color: white; background: transparent;"
-                f" border-radius: 18px; border: none; }}"
-                f" QPushButton:hover {{ background: {self.theme.surface_variant}; }}")
-            btn.clicked.connect(cmd)
-            header.addWidget(btn)
+
+        self.min_btn = QPushButton("—")
+        self.min_btn.setFocusPolicy(Qt.NoFocus)
+        self.min_btn.setFixedSize(36, 36)
+        self.min_btn.setStyleSheet(
+            f"QPushButton {{ color: white; background: transparent;"
+            f" border-radius: 18px; border: none; outline: none; }}"
+            f" QPushButton:hover {{ background: {getattr(self.theme, 'surface_container_highest', self.theme.surface_variant)}; }}")
+        self.min_btn.clicked.connect(self.showMinimized)
+        header.addWidget(self.min_btn)
+
+        self.close_btn = QPushButton("✕")
+        self.close_btn.setFocusPolicy(Qt.NoFocus)
+        self.close_btn.setFixedSize(36, 36)
+        self.close_btn.setStyleSheet(
+            f"QPushButton {{ color: white; background: transparent;"
+            f" border-radius: 18px; border: none; outline: none; }}"
+            f" QPushButton:hover {{ background: {getattr(self.theme, 'surface_container_highest', self.theme.surface_variant)}; }}")
+        self.close_btn.clicked.connect(self.close)
+        header.addWidget(self.close_btn)
+
         self.layout.addLayout(header)
 
     def closeEvent(self, event):
@@ -229,19 +260,20 @@ class RoundedWindow(QWidget):
 
     def setup_status_card(self):
         self.status_card = QFrame()
-        card_color = QColor(self.theme.secondary_container)
-        rgba = f"rgba({card_color.red()}, {card_color.green()}, {card_color.blue()}, 0.4)"
+        card_bg = getattr(self.theme, "surface_container", self.theme.surface_variant)
         self.status_card.setStyleSheet(
-            f"QFrame {{ background-color: {rgba}; border-radius: 28px; border: none; }}"
-            f" QLabel {{ color: {self.theme.on_secondary_container};"
-            f" border: none; background: transparent; }}")
+            f"QFrame {{ background-color: {card_bg}; border-radius: 28px; border: none; outline: none; }}"
+            f" QLabel {{ color: {self.theme.on_surface}; border: none; background: transparent; }}"
+        )
         self.status_card.setFixedHeight(120)
         card_layout = QVBoxLayout(self.status_card)
         card_layout.setContentsMargins(24, 16, 24, 16)
         top = QHBoxLayout()
-        top.addWidget(QLabel("Connection Status"))
+        self.status_title_label = QLabel("Connection Status")
+        self.status_title_label.setStyleSheet(f"color: {self.theme.on_surface_variant}; font-size: 13px; font-weight: 500;")
+        top.addWidget(self.status_title_label)
         top.addStretch()
-        self.vpn_switch = AnimatedToggleSwitch()
+        self.vpn_switch = AnimatedToggleSwitch(self, theme=self.theme)
         self.vpn_switch.mousePressEvent = self.on_vpn_switch_clicked
         top.addWidget(self.vpn_switch)
         self.status_label = QLabel("Disconnected")
@@ -249,7 +281,7 @@ class RoundedWindow(QWidget):
             "font-size: 24px; font-weight: bold; background: transparent;")
         self.ping_label = QLabel("Ping: --")
         self.ping_label.setStyleSheet(
-            "font-size: 12px; opacity: 0.7; background: transparent;")
+            f"font-size: 12px; color: {self.theme.on_surface_variant}; background: transparent;")
         card_layout.addLayout(top)
         card_layout.addWidget(self.status_label)
         card_layout.addWidget(self.ping_label)
@@ -261,6 +293,8 @@ class RoundedWindow(QWidget):
             f"color: {color}; font-size: 24px; font-weight: bold; background: transparent;")
 
     def _proxy_addr_text(self):
+        if self.settings.get("tun_mode", False):
+            return "TUN (Global VPN)"
         return f"SOCKS5 on 127.0.0.1:{self.connection_manager.local_port}"
 
     def _notify_port_change(self):
@@ -284,6 +318,7 @@ class RoundedWindow(QWidget):
             self.show_notification("Connection Error", msg)
             if not self._port_change_notice:
                 self.ping_label.setText("Ping: --")
+            self.vpn_switch.toggle(False)
         elif self.connection_manager.is_connected:
             if not self._port_change_notice:
                 self.ping_label.setText(self._proxy_addr_text())
@@ -293,15 +328,20 @@ class RoundedWindow(QWidget):
                     f"{self.connection_manager.current_geo['ip']}",
                     self.theme.on_secondary_container)
             elif self.connection_manager.is_connecting:
-                self._set_status("⚡ Connecting...", self.theme.on_secondary_container)
+                if self.settings.get("tun_mode", False):
+                    self._set_status("🔧 Creating tunnel...", self.theme.on_secondary_container)
+                else:
+                    self._set_status("⚡ Connecting...", self.theme.on_secondary_container)
             else:
                 self._set_status("Connected", self.theme.on_secondary_container)
         else:
             self._set_status("Disconnected", self.theme.on_secondary_container)
             if not self._port_change_notice:
                 self.ping_label.setText("Ping: --")
+            self.vpn_switch.toggle(False)
 
     def on_connection_state_changed(self, conn):
+        self.vpn_switch.toggle(conn)
         for item in self._server_items:
             item.radio.update()
 
@@ -373,6 +413,18 @@ class RoundedWindow(QWidget):
         if connect is None:
             connect = not self.connection_manager.is_connected
         if connect:
+            if self.settings.get("tun_mode", False):
+                from utils.platform_utils import is_admin, elevate_restart
+                if not is_admin() and sys.platform == "win32":
+                    reply = QMessageBox.question(
+                        self, "Administrator Privileges Required",
+                        "TUN Mode (Global VPN) requires Administrator privileges to configure virtual network adapters and routing tables.\n\n"
+                        "Would you like to restart Socksicle as Administrator now?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        QMessageBox.Yes)
+                    if reply == QMessageBox.Yes:
+                        elevate_restart()
+                    return
             if not self._ensure_backend():
                 return
             btn = self.button_group.checkedButton()
@@ -383,18 +435,31 @@ class RoundedWindow(QWidget):
                     server = servers[idx]
                     log.info("Connecting to server index %d in tab %s...",
                              idx, self.current_tab)
-                    if self.connection_manager.toggle(server, True):
-                        self.vpn_switch.toggle(True)
+                    # Immediate responsive UI updates
+                    self.vpn_switch.toggle(True)
+                    is_tun = self.settings.get("tun_mode", False)
+                    if is_tun:
+                        self.status_label.setText("🔧 Creating tunnel...")
+                        self.show_notification("Connecting", f"Creating tunnel for {server.name}...")
+                    else:
                         self.status_label.setText("⚡ Connecting...")
                         self.show_notification("Connecting", f"Attempting to connect to {server.name}...")
+
+                    def _run_connect():
+                        ok = self.connection_manager.toggle(server, True)
+                        if not ok:
+                            from PySide6.QtCore import QMetaObject, Qt as Q_Qt, Q_ARG
+                            QMetaObject.invokeMethod(self.vpn_switch, "toggle", Q_Qt.QueuedConnection, Q_ARG(bool, False))
+
+                    threading.Thread(target=_run_connect, daemon=True).start()
             else:
                 QMessageBox.warning(self, "Error", "Please select a server first!")
         else:
             log.info("Disconnecting...")
-            self.connection_manager.toggle(None, False)
             self.vpn_switch.toggle(False)
             self.ping_label.setText("Ping: --")
             self.show_notification("Disconnected", "Your secure connection has been closed.")
+            threading.Thread(target=lambda: self.connection_manager.toggle(None, False), daemon=True).start()
 
     def _current_servers(self):
         if self.current_tab == "Manual":
@@ -412,24 +477,34 @@ class RoundedWindow(QWidget):
 
     def setup_bottom_nav(self):
         nav = QHBoxLayout()
-        actions = [
-            ("Settings", self.show_settings_dialog),
-            ("Logs", self.show_log_dialog),
-            ("About", self.show_about_dialog),
-        ]
-        for txt, cmd in actions:
-            btn = QPushButton(txt)
-            btn.setStyleSheet(self.theme.get_button_style("text"))
-            btn.clicked.connect(cmd)
-            nav.addWidget(btn)
-            if txt == "Settings":
-                nav.addStretch()
+        self.settings_btn = QPushButton("Settings")
+        self.settings_btn.setFocusPolicy(Qt.NoFocus)
+        self.settings_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.settings_btn.clicked.connect(self.show_settings_dialog)
+        nav.addWidget(self.settings_btn)
+
+        nav.addStretch()
+
+        self.logs_btn = QPushButton("Logs")
+        self.logs_btn.setFocusPolicy(Qt.NoFocus)
+        self.logs_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.logs_btn.clicked.connect(self.show_log_dialog)
+        nav.addWidget(self.logs_btn)
+
+        self.about_btn = QPushButton("About")
+        self.about_btn.setFocusPolicy(Qt.NoFocus)
+        self.about_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.about_btn.clicked.connect(self.show_about_dialog)
+        nav.addWidget(self.about_btn)
+
         self.layout.addLayout(nav)
 
     def show_log_dialog(self):
-        self.log_dialog.show()
-        self.log_dialog.raise_()
-        self.log_dialog.activateWindow()
+        if hasattr(self, 'log_dialog') and self.log_dialog:
+            self.log_dialog.set_theme(self.theme)
+            self.log_dialog.show()
+            self.log_dialog.raise_()
+            self.log_dialog.activateWindow()
 
     def add_log(self, msg):
         if self.log_dialog:
@@ -591,26 +666,124 @@ class RoundedWindow(QWidget):
     def update_tabs(self):
         while self.tabs_layout.count():
             item = self.tabs_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            if item.widget():
+                item.widget().deleteLater()
         tabs = ["Manual"] + [s['name'] for s in self.subscription_manager.subscriptions]
         for name in tabs:
             is_active = name == self.current_tab
-            color = self.theme.primary if is_active else self.theme.on_surface_variant
-            border = (
-                f"border-bottom: 3px solid {self.theme.primary};" if is_active else "")
             btn = QPushButton(name)
-            btn.setStyleSheet(
-                f"QPushButton {{ color: {color}; background: transparent; border: none;"
-                f" font-weight: 700; font-size: 14px; padding: 8px 4px; {border} }}")
+            btn.setFocusPolicy(Qt.NoFocus)
+            btn.setFixedHeight(32)
+            if is_active:
+                bg = getattr(self.theme, "primary_container", self.theme.primary)
+                fg = getattr(self.theme, "on_primary_container", self.theme.on_primary)
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {fg};
+                        background-color: {bg};
+                        border-radius: 16px;
+                        font-weight: 700;
+                        font-size: 13px;
+                        padding: 0px 18px;
+                        border: none;
+                        outline: none;
+                    }}
+                """)
+            else:
+                fg = self.theme.on_surface_variant
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        color: {fg};
+                        background-color: transparent;
+                        border-radius: 16px;
+                        font-weight: 600;
+                        font-size: 13px;
+                        padding: 0px 14px;
+                        border: none;
+                        outline: none;
+                    }}
+                    QPushButton:hover {{
+                        background-color: rgba(255, 255, 255, 0.08);
+                        color: {self.theme.on_surface};
+                    }}
+                """)
             btn.clicked.connect(lambda checked=False, n=name: self.switch_tab(n))
             self.tabs_layout.addWidget(btn)
         self.tabs_layout.addStretch()
 
+    def apply_theme_styles(self):
+        """Re-apply dynamic Material 3 styles across all window components."""
+        self.container.setStyleSheet(
+            f"background-color: {self.theme.surface}; border-radius: 32px; border: none; outline: none;"
+        )
+        if hasattr(self, "title_label"):
+            self.title_label.setStyleSheet(
+                f"color: {self.theme.on_surface}; font-size: 22px; font-weight: 600; border: none; background: transparent; outline: none;"
+            )
+        if hasattr(self, "min_btn"):
+            self.min_btn.setStyleSheet(
+                f"QPushButton {{ color: white; background: transparent; border-radius: 18px; border: none; outline: none; }}"
+                f" QPushButton:hover {{ background: {getattr(self.theme, 'surface_container_highest', self.theme.surface_variant)}; }}"
+            )
+        if hasattr(self, "close_btn"):
+            self.close_btn.setStyleSheet(
+                f"QPushButton {{ color: white; background: transparent; border-radius: 18px; border: none; outline: none; }}"
+                f" QPushButton:hover {{ background: {getattr(self.theme, 'surface_container_highest', self.theme.surface_variant)}; }}"
+            )
+        card_bg = getattr(self.theme, "surface_container", self.theme.surface_variant)
+        self.status_card.setStyleSheet(
+            f"QFrame {{ background-color: {card_bg}; border-radius: 28px; border: none; outline: none; }}"
+            f" QLabel {{ color: {self.theme.on_surface}; border: none; background: transparent; }}"
+        )
+        if hasattr(self, "status_title_label"):
+            self.status_title_label.setStyleSheet(f"color: {self.theme.on_surface_variant}; font-size: 13px; font-weight: 500;")
+        if hasattr(self, "ping_label"):
+            self.ping_label.setStyleSheet(f"font-size: 12px; color: {self.theme.on_surface_variant}; background: transparent;")
+
+        self.traffic_card.setStyleSheet(
+            f"background: {getattr(self.theme, 'surface_container_low', self.theme.surface_variant)}; border-radius: 20px; border: none;"
+        )
+        self.traffic_label.setStyleSheet(
+            f"color: {self.theme.on_surface}; font-size: 12px; font-weight: 600;"
+        )
+        self.traffic_bar.setStyleSheet(
+            f"QProgressBar {{ background-color: rgba(0,0,0,0.2); border: none; border-radius: 4px; }}"
+            f" QProgressBar::chunk {{ background-color: {self.theme.primary}; border-radius: 4px; }}"
+        )
+        self.expire_label.setStyleSheet(f"color: {self.theme.on_surface_variant}; font-size: 11px;")
+        self.meta_label.setStyleSheet(f"color: {self.theme.on_surface_variant}; font-size: 10px;")
+        self.search_bar.setStyleSheet(
+            f"background: {getattr(self.theme, 'surface_container_highest', self.theme.surface_variant)}; color: {self.theme.on_surface};"
+            f" padding: 8px 12px; border-radius: 12px; border: none; margin-top: 4px; outline: none;"
+        )
+        self.add_btn.setStyleSheet(self.theme.get_button_style("tonal"))
+        self.export_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.import_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.update_sub_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.ping_all_btn.setStyleSheet(self.theme.get_button_style("text"))
+        self.del_sub_btn.setStyleSheet(self.theme.get_button_style("text"))
+
+        if hasattr(self, "settings_btn"):
+            self.settings_btn.setStyleSheet(self.theme.get_button_style("text"))
+        if hasattr(self, "logs_btn"):
+            self.logs_btn.setStyleSheet(self.theme.get_button_style("text"))
+        if hasattr(self, "about_btn"):
+            self.about_btn.setStyleSheet(self.theme.get_button_style("text"))
+
+        self.vpn_switch.set_theme(self.theme)
+        if hasattr(self, "log_dialog") and self.log_dialog is not None:
+            self.log_dialog.set_theme(self.theme)
+
+        self.update_tabs()
+        self.refresh_server_list()
+
     def refresh_server_list(self):
-        for b in self.button_group.buttons(): self.button_group.removeButton(b)
+        for b in self.button_group.buttons():
+            self.button_group.removeButton(b)
         while self.server_layout.count():
             item = self.server_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            if item.widget():
+                item.widget().deleteLater()
         servers = self._current_servers()
         self._server_items = []
         for i, s in enumerate(servers):
@@ -635,7 +808,8 @@ class RoundedWindow(QWidget):
         for i, s in enumerate(servers):
             pool.start(PingJob(i, s.host, s.port, self.serverPingReady.emit,
                                method=method,
-                               socks5_port=self.connection_manager.local_port))
+                               socks5_port=self.connection_manager.local_port,
+                               protocol=getattr(s, "protocol", None)))
 
     @Slot(int, float)
     def update_server_ping_ui(self, index, ms):
@@ -643,7 +817,8 @@ class RoundedWindow(QWidget):
             self._server_items[index].set_ping(ms if ms >= 0 else None)
 
     def delete_current_subscription(self):
-        if self.current_tab == "Manual": return
+        if self.current_tab == "Manual":
+            return
         if QMessageBox.question(self, "Delete Sub", f"Remove subscription '{self.current_tab}'?") == QMessageBox.Yes:
             self.subscription_manager.delete(self.current_tab)
             self.current_tab = "Manual"
@@ -666,14 +841,24 @@ class RoundedWindow(QWidget):
         d = SettingsDialog(self, self.theme, self.connection_manager.local_port,
                            self.settings.get("auto_connect", False),
                            current_engine=current_engine)
+        geo = self.geometry()
+        d.move(geo.center().x() - d.width() // 2,
+               max(40, geo.center().y() - d.height() // 2))
         if d.exec() == QDialog.Accepted:
             s = d.get_settings()
             old_engine = self.settings.get("engine", "sslocal")
             new_engine = s.get("engine", "sslocal")
             old_port = self.connection_manager.local_port
+            old_theme_preset = self.settings.get("theme_preset", "dynamic")
+            new_theme_preset = s.get("theme_preset", "dynamic")
 
             self.settings.update(s)
             self.server_manager.save_settings()
+
+            # Switch theme if changed
+            if new_theme_preset != old_theme_preset:
+                self.theme.apply_theme(new_theme_preset)
+                self.apply_theme_styles()
 
             # Switch engine if changed
             if new_engine != old_engine:
@@ -691,6 +876,11 @@ class RoundedWindow(QWidget):
             self.subscription_manager.set_settings(self.settings)
             self.subscription_manager.set_auto_update(
                 s.get("auto_update_subs", True))
+        else:
+            # Revert theme live preview if cancelled
+            orig_theme = self.settings.get("theme_preset", "dynamic")
+            self.theme.apply_theme(orig_theme)
+            self.apply_theme_styles()
 
     def export_profiles(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export Profiles", "", "JSON Files (*.json)")
@@ -755,7 +945,7 @@ class RoundedWindow(QWidget):
             QMessageBox.warning(
                 self, "Invalid Link",
                 "The provided link is malformed.\n\n"
-                "Supported formats: ss://, vless://, vmess://, "
+                "Supported formats: ss://, vless://, vmess://, hysteria2://, "
                 "subscription URL, or tws2://"
             )
             return

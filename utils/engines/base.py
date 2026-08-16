@@ -153,7 +153,12 @@ class ProxyEngine(QObject):
             try:
                 self.current_server = server
                 args = [str(binary), *self.build_args(server)]
-                flags = CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                flags = (CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if sys.platform == "win32" else 0
+                env = os.environ.copy()
+                env["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] = "true"
+                env["ENABLE_DEPRECATED_OUTBOUND_DNS_RULE_ITEM"] = "true"
+                env["ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER"] = "true"
+                env["ENABLE_DEPRECATED_LEGACY_INBOUND_FIELDS"] = "true"
                 self.process = subprocess.Popen(
                     args,
                     stdin=subprocess.DEVNULL,
@@ -164,6 +169,7 @@ class ProxyEngine(QObject):
                     errors="replace",
                     creationflags=flags,
                     close_fds=(sys.platform != "win32"),
+                    env=env,
                 )
                 self._marker_name = self.engine_type.value
                 write_pid_marker(self._marker_name, self.process.pid,
@@ -220,20 +226,21 @@ class ProxyEngine(QObject):
                 line = line.strip()
                 if not line:
                     continue
-                if is_err:
-                    hint = self._bind_error_hint(line)
-                    if hint:
-                        log.warning("[%s-err] %s", self.process_name(), hint)
-                        self.logUpdated.emit(f"Error: {hint}")
-                        if not self._bind_error_reported:
-                            self._bind_error_reported = True
-                            self.statusChanged.emit(
-                                f"Connection failed: {hint}", True)
-                    else:
-                        log.warning("[%s-err] %s", self.process_name(), line)
-                        self.logUpdated.emit(f"Error: {line}")
+                low = line.lower()
+                is_actual_error = any(w in low for w in ("fatal", "panic", "error"))
+                hint = self._bind_error_hint(line) if is_err else None
+                if hint:
+                    log.warning("[%s-log] %s", self.process_name(), hint)
+                    self.logUpdated.emit(f"Error: {hint}")
+                    if not self._bind_error_reported:
+                        self._bind_error_reported = True
+                        self.statusChanged.emit(
+                            f"Connection failed: {hint}", True)
+                elif is_err and is_actual_error:
+                    log.warning("[%s-log] %s", self.process_name(), line)
+                    self.logUpdated.emit(line)
                 else:
-                    log.info("[%s-out] %s", self.process_name(), line)
+                    log.info("[%s-log] %s", self.process_name(), line)
                     self.logUpdated.emit(line)
         except (OSError, ValueError) as e:
             log.debug("[%s] stream read ended: %s", self.process_name(), e)
@@ -274,12 +281,19 @@ class ProxyEngine(QObject):
                 log.info("Stopping %s (pid=%s)", self.process_name(), proc.pid)
                 if proc.poll() is None:
                     try:
-                        proc.terminate()
+                        if sys.platform == "win32":
+                            import signal
+                            try:
+                                os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+                            except (OSError, ValueError):
+                                proc.terminate()
+                        else:
+                            proc.terminate()
                         try:
-                            proc.wait(timeout=2)
+                            proc.wait(timeout=2.5)
                         except subprocess.TimeoutExpired:
                             proc.kill()
-                            proc.wait(timeout=2)
+                            proc.wait(timeout=1.5)
                     except (OSError, subprocess.SubprocessError) as e:
                         log.warning("Error stopping %s: %s",
                                     self.process_name(), e)

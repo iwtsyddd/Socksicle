@@ -22,6 +22,7 @@ class ProxyProtocol(str, Enum):
     SHADOWSOCKS = "shadowsocks"
     VLESS = "vless"
     VMESS = "vmess"
+    HYSTERIA2 = "hysteria2"
 
 
 @dataclass
@@ -49,13 +50,19 @@ class Server:
     path: str = ""
     host_header: str = ""
     is_private: bool = False
+    insecure: bool = False
+    obfs: str = ""
+    obfs_password: str = ""
+    ports: str = ""
+    up_mbps: int = 0
+    down_mbps: int = 0
 
     @classmethod
     def from_link(cls, raw_link, default_name="Server"):
-        """Parse an ss://, vless://, or vmess:// link into a Server, or None."""
+        """Parse an ss://, vless://, vmess://, hysteria2://, or hy2:// link into a Server, or None."""
         if not raw_link:
             return None
-        if raw_link.startswith(('vless://', 'vmess://')):
+        if raw_link.startswith(('vless://', 'vmess://', 'hysteria2://', 'hy2://')):
             from .link_parser import parse_link
             return parse_link(raw_link, default_name=default_name)
         data = decode_ss_link(raw_link)
@@ -93,6 +100,14 @@ class Server:
             alter_id = int(data.get('alter_id', 0))
         except (TypeError, ValueError):
             alter_id = 0
+        try:
+            up_mbps = int(data.get('up_mbps', 0))
+        except (TypeError, ValueError):
+            up_mbps = 0
+        try:
+            down_mbps = int(data.get('down_mbps', 0))
+        except (TypeError, ValueError):
+            down_mbps = 0
         return cls(
             key=data.get('key', ''),
             name=data.get('name', 'Server'),
@@ -117,6 +132,12 @@ class Server:
             path=data.get('path', ''),
             host_header=data.get('host_header', ''),
             is_private=data.get('is_private', False),
+            insecure=bool(data.get('insecure', False)),
+            obfs=data.get('obfs', ''),
+            obfs_password=data.get('obfs_password', ''),
+            ports=data.get('ports', ''),
+            up_mbps=up_mbps,
+            down_mbps=down_mbps,
         )
 
     def to_dict(self):
@@ -163,6 +184,18 @@ class Server:
             d["host_header"] = self.host_header
         if self.is_private:
             d["is_private"] = True
+        if self.insecure:
+            d["insecure"] = True
+        if self.obfs:
+            d["obfs"] = self.obfs
+        if self.obfs_password:
+            d["obfs_password"] = self.obfs_password
+        if self.ports:
+            d["ports"] = self.ports
+        if self.up_mbps:
+            d["up_mbps"] = self.up_mbps
+        if self.down_mbps:
+            d["down_mbps"] = self.down_mbps
         return d
 
     @property
@@ -171,6 +204,8 @@ class Server:
             return f"{self.method}:{self.password}@{self.host}:{self.port}"
         if self.protocol == ProxyProtocol.VMESS:
             return f"vmess:{self.uuid}@{self.host}:{self.port}"
+        if self.protocol == ProxyProtocol.HYSTERIA2:
+            return f"hysteria2:{self.password}@{self.host}:{self.port}"
         return f"vless:{self.uuid}@{self.host}:{self.port}"
 
     @property

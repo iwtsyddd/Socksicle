@@ -26,10 +26,10 @@ from utils.startup_utils import (DECLINED_REASON, provision_backend,
 
 def main():
     initialize()
+    apply_high_dpi_policy()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Socksicle")
-    apply_high_dpi_policy(app)
     app.setDesktopFileName(desktop_file_name())
 
     # Set icon

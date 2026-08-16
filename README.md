@@ -9,14 +9,14 @@ pluggable engine backend that supports **Shadowsocks, VLESS and VMess** through
 
 - **Material Design 3 interface**: frameless rounded window, animated toggles
   and cards, light/dark-aware styling.
-- **Multi-protocol support**: `ss://`, `vless://` and `vmess://` links, with a
-  per-server protocol badge (e.g. `VLESS · Reality · WS`).
+- **Multi-protocol support**: `ss://`, `vless://`, `vmess://`, `hysteria2://` and `hy2://` links, with a
+  per-server protocol badge (e.g. `VLESS · Reality · WS`, `HY2`).
 - **Engine selection**: choose between **sslocal**, **xray** or **sing-box**
   in Settings; missing engines are offered for **automatic download**
   (pinned official releases, with a progress dialog showing speed and ETA)
   and can also be placed manually in `bin/` next to the app.
 - **Subscription management**: Base64-encoded link lists, SIP008 JSON and
-  plain-text subscriptions; `ss://`, `vless://` and `vmess://` nodes are
+  plain-text subscriptions; `ss://`, `vless://`, `vmess://` and `hy2://` nodes are
   imported together. Extended headers (`Subscription-Userinfo`,
   `Profile-Title`, `Profile-Description`, `Profile-Update-Interval`, …) are
   honored, including `base64:`-encoded values.
@@ -111,7 +111,7 @@ socksicle          # or: python main.py
 | ------ | --------- | ------------- | ----- |
 | `sslocal` (shadowsocks-rust, pinned v1.24.0) | Shadowsocks | yes | Static musl builds on Linux; Windows x64 only |
 | `xray` (Xray-core, pinned v25.4.3) | Shadowsocks, VLESS, VMess | yes | TLS / REALITY, ws / grpc / xhttp transports |
-| `sing-box` (pinned v1.11.8) | Shadowsocks, VLESS, VMess | yes | TLS / REALITY, ws / grpc / http transports |
+| `sing-box` (pinned v1.11.8) | Shadowsocks, VLESS, VMess, Hysteria 2 | yes | TLS / REALITY, ws / grpc / http transports, Obfs, Port hopping |
 
 Engine binaries are located in, in order: `bin/` next to the app, the
 per-user config `bin/` directory, `bin/<engine>/` subdirectories, and finally

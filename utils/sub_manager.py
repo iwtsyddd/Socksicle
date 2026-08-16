@@ -117,7 +117,7 @@ def _extract_description(headers, decoded_lines, announce, meta):
     preamble = []
     for line in decoded_lines:
         line = line.strip()
-        if line.startswith(('ss://', 'vless://', 'vmess://')):
+        if line.startswith(('ss://', 'vless://', 'vmess://', 'hysteria2://', 'hy2://')):
             break
         if not line or line.startswith("base64:"):
             continue
@@ -273,7 +273,7 @@ def parse_subscription(url, settings=None):
                 meta['description'] = _extract_description(
                     headers, decoded_lines, meta.get('announce', ''), meta)
 
-            supported_prefixes = ('ss://', 'vless://', 'vmess://')
+            supported_prefixes = ('ss://', 'vless://', 'vmess://', 'hysteria2://', 'hy2://')
             links = [
                 line for line in decoded_lines
                 if line.strip().startswith(supported_prefixes)

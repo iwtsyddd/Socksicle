@@ -116,7 +116,7 @@
 <body>
   <div class="card">
     <h1>TwinSock URL Encoder</h1>
-    <p class="subtitle">Encrypt ss://, vless://, vmess:// links and subscription URLs into shareable tws2:// links.</p>
+    <p class="subtitle">Encrypt ss://, vless://, vmess://, hysteria2:// links and subscription URLs into shareable tws2:// links.</p>
 
     <div class="field">
       <label class="label" for="key">Share key</label>
@@ -131,7 +131,7 @@
     <div class="field">
       <label class="label" for="input">Link or subscription URL</label>
       <textarea id="input" spellcheck="false"
-        placeholder="One link per line: ss://, vless://, vmess:// or an http(s):// subscription URL"></textarea>
+        placeholder="One link per line: ss://, vless://, vmess://, hysteria2:// or an http(s):// subscription URL"></textarea>
     </div>
 
     <div class="actions">
@@ -462,7 +462,7 @@ encodeBtn.addEventListener("click", async () => {
   }
   const lines = inputArea.value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!lines.length) {
-    setStatus("Nothing to encode — enter at least one ss://, vless://, vmess:// or subscription URL.", "error");
+    setStatus("Nothing to encode — enter at least one ss://, vless://, vmess://, hysteria2:// or subscription URL.", "error");
     return;
   }
   encodeBtn.disabled = true;

@@ -53,7 +53,7 @@ SCHEMA = "socksicle-drawer"
 DRAWER_VERSION = 2
 DRAWER_FILE = "drawer.json"
 CHAIN_FILES = ("servers.json", "subscriptions.json")
-SECRET_FIELDS = ("key", "password", "uuid", "public_key")
+SECRET_FIELDS = ("key", "password", "uuid", "public_key", "obfs_password")
 OBFUSCATION_MARKER = "__obfuscated__"
 _EAR_FIELDS = SECRET_FIELDS + ("url",)
 

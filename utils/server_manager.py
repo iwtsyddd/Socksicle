@@ -93,7 +93,8 @@ class ServerManager:
                 "minimize_to_tray": True, "sslocal_declined": False,
                 "auto_update_subs": True, "user_agent_key": "socksicle",
                 "fake_hwid": False, "hwid_value": "",
-                "engine": "sslocal", "ping_method": DEFAULT_PING_METHOD}
+                "engine": "sslocal", "ping_method": DEFAULT_PING_METHOD,
+                "tun_mode": False, "theme_preset": "dynamic"}
 
     def _ensure_tws2_share_key(self):
         if self.settings.get("tws2_share_key"):

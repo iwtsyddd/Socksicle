@@ -14,7 +14,7 @@ import logging
 import threading
 import time
 
-from PySide6.QtCore import QObject, QTimer, Signal, QThreadPool
+from PySide6.QtCore import QObject, QTimer, Signal, Slot, QThreadPool, QMetaObject, Qt
 
 from .geo_utils import fetch_ip_info_via_proxy
 from .ping import (http_ping_via_socks5_once, socks5_proxy_ready, ProxyPingJob,
@@ -25,7 +25,7 @@ from .engines.base import DEFAULT_LOCAL_PORT
 log = logging.getLogger("connection_manager")
 
 PROBE_INTERVAL_MS = 300
-PROBE_TIMEOUT_S = 10.0
+PROBE_TIMEOUT_S = 25.0
 
 GEO_RETRY_ATTEMPTS = 3
 GEO_RETRY_PAUSE_S = 1.5
@@ -88,10 +88,20 @@ class ConnectionManager(QObject):
             self._engine.local_port = DEFAULT_LOCAL_PORT
 
     def apply_settings(self, settings=None):
-        """Read the local port from settings and apply it to the engine."""
+        """Read settings and apply them to the engine."""
         if settings is not None:
             self._settings.update(settings)
         self.local_port = self._settings.get("local_port", DEFAULT_LOCAL_PORT)
+        tun_mode = self._settings.get("tun_mode", False)
+        if tun_mode:
+            from .engines.base import EngineType
+            from .engines.engine_manager import get_engine
+            if getattr(self._engine, "engine_type", None) != EngineType.SINGBOX:
+                self.switch_engine(get_engine(EngineType.SINGBOX))
+            if hasattr(self._engine, "tun_mode"):
+                self._engine.tun_mode = True
+        elif hasattr(self._engine, "tun_mode"):
+            self._engine.tun_mode = False
 
     @property
     def current_server(self):
@@ -120,13 +130,25 @@ class ConnectionManager(QObject):
         if connect is None:
             connect = not self.is_connected
         if connect:
+            tun_mode = self._settings.get("tun_mode", False)
+            proto_val = getattr(getattr(server, "protocol", None), "value", getattr(server, "protocol", ""))
+            if tun_mode or proto_val == "hysteria2":
+                from .engines.base import EngineType
+                from .engines.engine_manager import get_engine
+                if getattr(self._engine, "engine_type", None) != EngineType.SINGBOX:
+                    log.info("Auto-switching engine to sing-box (TUN: %s, Protocol: %s)", tun_mode, proto_val)
+                    self.switch_engine(get_engine(EngineType.SINGBOX))
+                if hasattr(self._engine, "tun_mode"):
+                    self._engine.tun_mode = bool(tun_mode)
             self.state = CONNECTING
             self.is_connecting = True
             self.current_geo = None
             self._generation += 1
             if self._engine.start(server):
-                self._probe_deadline = time.monotonic() + PROBE_TIMEOUT_S
-                self.probe_timer.start()
+                if threading.current_thread() is not threading.main_thread():
+                    QMetaObject.invokeMethod(self, "_start_probe", Qt.QueuedConnection)
+                else:
+                    self._start_probe()
                 return True
             self.state = DISCONNECTED
             self.is_connecting = False
@@ -134,10 +156,19 @@ class ConnectionManager(QObject):
             self.disconnect()
         return False
 
+    @Slot()
+    def _start_probe(self):
+        self._probe_deadline = time.monotonic() + PROBE_TIMEOUT_S
+        self.probe_timer.start()
+
     def disconnect(self):
         """Disconnect at any stage: failed start, crash, or mid-connect."""
-        self.probe_timer.stop()
-        self.ping_timer.stop()
+        if threading.current_thread() is not threading.main_thread():
+            QMetaObject.invokeMethod(self.probe_timer, "stop", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self.ping_timer, "stop", Qt.QueuedConnection)
+        else:
+            self.probe_timer.stop()
+            self.ping_timer.stop()
         self.state = DISCONNECTED
         self.is_connecting = False
         self.current_geo = None

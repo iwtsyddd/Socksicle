@@ -424,3 +424,55 @@ def test_ping_job_http_get_unreachable_socks5_reports_sentinel(qapp):
                        method="http_get", socks5_port=1))
     assert pool.waitForDone(6000)
     assert results == [(0, PING_ERROR_SENTINEL)]
+
+
+def test_direct_quic_ping_with_mock_udp_server():
+    from utils.ping import direct_quic_ping
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind(("127.0.0.1", 0))
+    port = udp_sock.getsockname()[1]
+
+    def _mock_udp_responder():
+        try:
+            udp_sock.settimeout(2.0)
+            data, addr = udp_sock.recvfrom(2048)
+            # Reply with mock QUIC Version Negotiation packet
+            udp_sock.sendto(b"\x80\x00\x00\x00\x00\x08" + b"\x00" * 8 + b"\x08" + b"\x00" * 8, addr)
+        except Exception:
+            pass
+        finally:
+            udp_sock.close()
+
+    t = threading.Thread(target=_mock_udp_responder, daemon=True)
+    t.start()
+
+    ms = direct_quic_ping("127.0.0.1", port, timeout=1.0)
+    assert ms is not None
+    assert ms >= 0
+
+
+def test_ping_job_hysteria2_uses_quic(qapp):
+    from utils.ping import direct_quic_ping
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind(("127.0.0.1", 0))
+    port = udp_sock.getsockname()[1]
+
+    def _mock_udp_responder():
+        try:
+            udp_sock.settimeout(2.0)
+            data, addr = udp_sock.recvfrom(2048)
+            udp_sock.sendto(b"\x80\x00\x00\x00\x00\x08" + b"\x00" * 8 + b"\x08" + b"\x00" * 8, addr)
+        except Exception:
+            pass
+        finally:
+            udp_sock.close()
+
+    t = threading.Thread(target=_mock_udp_responder, daemon=True)
+    t.start()
+
+    results = []
+    pool = QThreadPool()
+    pool.start(PingJob(0, "127.0.0.1", port, lambda i, ms: results.append((i, ms)),
+                       protocol="hysteria2", socks5_port=1))
+    assert pool.waitForDone(6000)
+    assert results and results[0][1] >= 0

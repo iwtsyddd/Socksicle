@@ -1,6 +1,6 @@
 [Setup]
 AppName=Socksicle
-AppVersion=1.3
+AppVersion=1.4
 WizardStyle=modern dynamic
 DefaultDirName={autopf}\Socksicle
 DefaultGroupName=Socksicle

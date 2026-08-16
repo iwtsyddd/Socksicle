@@ -122,12 +122,20 @@ def desktop_file_name() -> str:
     return "Socksicle" if is_windows() else "Socksicle.desktop"
 
 
-def apply_high_dpi_policy(app):
+def apply_high_dpi_policy(app=None):
     """Windows: PassThrough scale-factor rounding for the QApplication."""
     if not is_windows():
         return
-    app.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    if app is not None and hasattr(app, "setHighDpiScaleFactorRoundingPolicy"):
+        app.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    else:
+        try:
+            from PySide6.QtGui import QGuiApplication
+            QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+                Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+        except Exception:
+            pass
 
 
 def install_native_handlers(app, window):

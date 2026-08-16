@@ -5,9 +5,91 @@ All notable changes to Socksicle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4] - 2026-08-16
+
+> **Current release.** Socksicle introduces Material You (Material 3) dynamic theming
+> with live wallpaper accent extraction, system-wide TUN mode (Global VPN), Hysteria 2
+> protocol support, standalone draggable windows for Settings and Connection Logs, and
+> major connection lifecycle improvements.
+
+### Added
+
+- 🎨 **Material You (Material 3) dynamic theming engine**:
+  - Full Material 3 tonal palette generation (`primary`, `primary_container`,
+    `secondary_container`, `surface`, `surface_container`, `surface_container_high`,
+    `outline`, `outline_variant`, `on_primary`, etc.) with WCAG-compliant contrast
+    calculations — `utils/theme.py`.
+  - Built-in curated M3 color presets (Dynamic System/Wallpaper, Cobalt, Sage,
+    Amber, Rose, Crimson, Obsidian, Arctic) selectable in Settings with instant
+    **Live Preview** — `ui/settings_dialog.py`, `utils/theme.py`.
+  - **Hot-Plug system accent & wallpaper monitor**: background polling timer
+    detects Windows DWM accent color and wallpaper changes in real time, seamlessly
+    re-theming all active windows and widgets on the fly — `utils/theme.py`,
+    `ui/main_window.py`.
+- 🛡️ **TUN Mode (Global Transparent Proxy / VPN)**:
+  - System-wide traffic routing via `sing-box` TUN inbound and Wintun driver
+    with DNS hijacking and sniff routing rules — `utils/engines/singbox_engine.py`.
+  - Automatic Administrator elevation prompt and restart on Windows when TUN Mode
+    is enabled — `ui/main_window.py`, `utils/platform_utils.py`.
+  - Dynamic per-session virtual adapter generation (`socksicle-{id}`) and stale
+    adapter cleanup routines preventing Wintun device naming collisions and
+    error `0x000000B7` (`Cannot create a file when that file already exists`) —
+    `utils/engines/singbox_engine.py`.
+  - Clean graceful shutdown (`CTRL_BREAK_EVENT`) ensuring Wintun properly releases
+    adapter handles and restores Windows routing tables before termination —
+    `utils/engines/base.py`.
+  - Non-blocking asynchronous connection flow with dynamic `"🔧 Creating tunnel..."`
+    status indication and immediate UI feedback — `ui/main_window.py`,
+    `utils/connection_manager.py`.
+- ⚡ **Hysteria 2 (hy2) protocol support**:
+  - Link parser for `hy2://` and `hysteria2://` URIs with port hopping,
+    obfuscation, SNI, and insecure TLS flags — `utils/link_parser.py`.
+  - Sing-box outbound configuration generator for Hysteria 2 —
+    `utils/engines/singbox_engine.py`.
+- 📋 **Standalone Window Architecture**:
+  - **Connection Log Window** (`ConnectionLogDialog`): Converted to a standalone,
+    draggable frameless window (`560×520`) with clean monospace typography, ANSI
+    escape sequence stripping, auto-scrolling, and dynamic theme synchronization —
+    `ui/connection_log_dialog.py`.
+  - **Settings Window** (`SettingsDialog`): Standalone frameless window with
+    Material 3 outlines, custom rounded inputs, dropdowns, and spinboxes —
+    `ui/settings_dialog.py`.
+  - **About Window** (`AboutDialog`): Material 3 styled dialog with live theming
+    and GitHub project link — `ui/about_dialog.py`.
+
+### Changed
+
+- 🔄 **Sing-box config modernized for v1.12+**: deprecated legacy DNS fields and
+  inbound keys migrated to rule actions (`sniff`, `hijack-dns`, `ip_is_private`),
+  and TUN inbound updated to the standard `address` array format —
+  `utils/engines/singbox_engine.py`.
+- 🔕 **Streamlined engine log draining**: normal informational output from
+  `stderr` is now cleanly classified as `[sing-box (TUN)-log]` without misleading
+  error prefixes — `utils/engines/base.py`.
+- 💊 **Material 3 pill tabs and cleaned button styling**: subscription tabs
+  redesigned as rounded pill chips (`border-radius: 16px`), dotted focus outlines
+  removed across the entire UI (`setFocusPolicy(Qt.NoFocus)`), and server badges
+  given clean transparent styling — `ui/main_window.py`, `ui/server_item.py`.
+- ⏱️ **Extended probe timeout**: connection probe timeout increased to 25s to
+  gracefully accommodate Windows virtual adapter driver initialization —
+  `utils/connection_manager.py`.
+- 🖥️ **High-DPI policy initialization**: scale-factor rounding policy is now
+  applied statically before `QApplication` instantiation to eliminate Qt 6 startup
+  warnings — `utils/platform_startup.py`, `main.py`.
+
+### Fixed
+
+- 🧯 Fixed VPN toggle switch staying in the ON state when a connection failed to
+  start; switch now reliably flips back to OFF on error or disconnect.
+- 🧯 Fixed bottom navigation buttons (`Settings`, `Logs`, `About`) and dialog
+  containers retaining initial theme colors after palette switches.
+- 🧯 Fixed server list title clipping and empty ping badge layout displacement.
+- 🧯 Fixed VLESS TLS WebSocket compatibility by stripping incompatible TCP-only
+  `flow` flags.
+
 ## [1.3] - 2026-08-15
 
-> **Current release.** Socksicle grows from a Linux-only Shadowsocks client into a
+> **Previous release.** Socksicle grows from a Linux-only Shadowsocks client into a
 > multi-protocol proxy client for Windows and Linux with selectable engines
 > (sslocal / xray / sing-box), VLESS and VMess support, an encrypted machine-bound
 > config vault, richer subscription metadata and a reworked latency-ping pipeline.

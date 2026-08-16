@@ -69,6 +69,24 @@ def is_admin() -> bool:
         return False
 
 
+def elevate_restart() -> bool:
+    """Restart the current application with Administrator privileges on Windows."""
+    if not is_windows():
+        return False
+    try:
+        import ctypes
+        params = " ".join(f'"{a}"' for a in sys.argv[1:])
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", sys.executable, f'"{sys.argv[0]}" {params}'.strip(), None, 1
+        )
+        if int(ret) > 32:
+            sys.exit(0)
+        return False
+    except Exception as e:
+        log.warning("Elevation restart failed: %s", e)
+        return False
+
+
 def windows_dark_mode() -> bool | None:
     """Return True (dark), False (light), or None when unknown."""
     if not is_windows():

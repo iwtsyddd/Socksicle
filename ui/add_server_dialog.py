@@ -8,6 +8,8 @@ _PROTOCOL_HINTS = {
     "ss://": "Shadowsocks",
     "vless://": "VLESS",
     "vmess://": "VMess",
+    "hysteria2://": "Hysteria 2",
+    "hy2://": "Hysteria 2",
     "tws2://": "TwinSock Share",
     "https://": "Subscription URL",
     "http://": "Subscription URL",
@@ -52,9 +54,9 @@ class AddServerDialog(QDialog):
         title.setStyleSheet(f"font-size: 18px; font-weight: bold; margin-bottom: 16px; color: {theme.on_surface};")
         layout.addWidget(title)
 
-        layout.addWidget(QLabel("Paste ss://, vless://, vmess://, subscription URL or tws2://"))
+        layout.addWidget(QLabel("Paste ss://, vless://, vmess://, hysteria2://, subscription URL or tws2://"))
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("ss://... / vless://... / vmess://... / https://... / tws2://...")
+        self.input_field.setPlaceholderText("ss://... / vless://... / vmess://... / hy2://... / https://... / tws2://...")
         self.input_field.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.input_field)
 
