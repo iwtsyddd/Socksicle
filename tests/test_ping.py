@@ -98,8 +98,14 @@ class _Socks5TestServer:
             except OSError:
                 pass
 
+    def __del__(self):
+        self.close()
+
     def close(self):
-        self.sock.close()
+        try:
+            self.sock.close()
+        except Exception:
+            pass
 
 
 class _RawListener:
@@ -133,8 +139,14 @@ class _RawListener:
         except OSError:
             pass
 
+    def __del__(self):
+        self.close()
+
     def close(self):
-        self.sock.close()
+        try:
+            self.sock.close()
+        except Exception:
+            pass
 
 
 def test_ping_measures_until_headers_complete():

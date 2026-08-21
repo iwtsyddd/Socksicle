@@ -246,7 +246,8 @@ def provision_backend(engine_type=None) -> object | None:
             return
         already_done = True
         outcome["result"] = result
-        loop.quit()
+        if loop.isRunning():
+            loop.quit()
 
     worker.finished.connect(_finish)
     dialog.canceled.connect(lambda: _finish(None))
@@ -254,12 +255,15 @@ def provision_backend(engine_type=None) -> object | None:
     dialog.setMinimumDuration(600)
     thread.start()
     loop.exec()
-    QCoreApplication.processEvents()
+
     tracker.stop()
     dialog.close()
-    thread.quit()
-    thread.wait()
-    worker.deleteLater()
+    dialog.deleteLater()
+
+    if thread.isRunning():
+        thread.quit()
+        thread.wait(2000)
+
     return outcome.get("result")
 
 
