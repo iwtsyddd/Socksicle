@@ -9,7 +9,7 @@ from collections import deque
 import time
 
 from PySide6.QtCore import (QCoreApplication, QEventLoop, QObject, QThread,
-                            QTimer, Signal, Slot)
+                            QTimer, Signal, Slot, Qt)
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
 from utils import ss_backend
@@ -229,28 +229,39 @@ def provision_backend(engine_type=None) -> object | None:
     dialog.setAutoReset(False)
 
     tracker = ProgressTracker(dialog)
+    loop = QEventLoop()
 
+    class _Receiver(QObject):
+        def __init__(self):
+            super().__init__()
+            self.result = None
+            self.done = False
+
+        @Slot(object)
+        def on_finished(self, res):
+            if not self.done:
+                self.done = True
+                self.result = res
+                if loop.isRunning():
+                    loop.quit()
+
+        @Slot()
+        def on_canceled(self):
+            if not self.done:
+                self.done = True
+                self.result = None
+                if loop.isRunning():
+                    loop.quit()
+
+    receiver = _Receiver()
     thread = QThread()
     worker = _ProvisionWorker(engine_type)
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
-    worker.progress.connect(tracker.update)
 
-    loop = QEventLoop()
-    outcome = {}
-    already_done = False
-
-    def _finish(result):
-        nonlocal already_done
-        if already_done:
-            return
-        already_done = True
-        outcome["result"] = result
-        if loop.isRunning():
-            loop.quit()
-
-    worker.finished.connect(_finish)
-    dialog.canceled.connect(lambda: _finish(None))
+    worker.finished.connect(receiver.on_finished, Qt.QueuedConnection)
+    dialog.canceled.connect(receiver.on_canceled, Qt.QueuedConnection)
+    worker.progress.connect(tracker.update, Qt.QueuedConnection)
 
     dialog.setMinimumDuration(600)
     thread.start()
@@ -262,9 +273,9 @@ def provision_backend(engine_type=None) -> object | None:
 
     if thread.isRunning():
         thread.quit()
-        thread.wait(2000)
+        thread.wait(3000)
 
-    return outcome.get("result")
+    return receiver.result
 
 
 def manual_install_instructions() -> str:
