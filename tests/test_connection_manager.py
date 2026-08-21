@@ -241,6 +241,10 @@ class ConnectionManagerProbeTest(unittest.TestCase):
                 mgr._probe()
                 self.assertEqual(mgr.state, CONNECTED)
             finally:
+                # Drop back to DISCONNECTED while mocks are still active so
+                # the daemon _fetch_geo thread exits instead of leaking real
+                # network retries (ip-api.com) across subsequent tests.
+                mgr.state = DISCONNECTED
                 mgr.ping_timer.stop()
                 mgr.probe_timer.stop()
 

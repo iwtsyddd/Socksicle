@@ -23,12 +23,12 @@ def _mock_init_app_fonts(monkeypatch):
     monkeypatch.setattr(utils.font_utils, "init_app_fonts", lambda: None)
 
 
-@pytest.fixture(autouse=True)
-def _flush_qt_events(qapp):
-    """Flush any queued events after each test."""
+@pytest.fixture(scope="session", autouse=True)
+def _drain_qt_threadpool():
+    """Let queued QRunnable work finish before the QApplication is destroyed."""
     yield
     try:
-        if app := QApplication.instance():
-            app.processEvents()
-    except (RuntimeError, ReferenceError):
+        from PySide6.QtCore import QThreadPool
+        QThreadPool.globalInstance().waitForDone(5000)
+    except Exception:
         pass
