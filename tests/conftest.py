@@ -25,10 +25,8 @@ def _mock_init_app_fonts(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _flush_qt_events(qapp):
-    """Flush any deferred deletions and queued events after each test."""
+    """Flush any queued events after each test."""
     yield
     inst = QApplication.instance()
     if inst is not None:
-        from PySide6.QtCore import QCoreApplication, QEvent
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         inst.processEvents()

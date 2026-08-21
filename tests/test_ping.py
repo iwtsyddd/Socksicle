@@ -3,7 +3,22 @@ import socket
 import threading
 import time
 
+import pytest
 from PySide6.QtCore import QThreadPool
+
+_ACTIVE_SERVERS = set()
+
+
+@pytest.fixture(autouse=True)
+def _auto_cleanup_ping_servers():
+    yield
+    servers = list(_ACTIVE_SERVERS)
+    _ACTIVE_SERVERS.clear()
+    for s in servers:
+        try:
+            s.close()
+        except Exception:
+            pass
 
 from utils.ping import (
     direct_http_ping, direct_tcp_ping, http_ping_via_socks5_once,
@@ -44,6 +59,7 @@ class _Socks5TestServer:
         self.truncate_headers = truncate_headers
         self.method = None
         self.thread = threading.Thread(target=self._serve, daemon=True)
+        _ACTIVE_SERVERS.add(self)
         self.thread.start()
 
     def _serve(self):
@@ -102,6 +118,7 @@ class _Socks5TestServer:
         self.close()
 
     def close(self):
+        _ACTIVE_SERVERS.discard(self)
         try:
             self.sock.close()
         except Exception:
@@ -119,6 +136,7 @@ class _RawListener:
         self.port = self.sock.getsockname()[1]
         self.data = None
         self.thread = threading.Thread(target=self._serve, daemon=True)
+        _ACTIVE_SERVERS.add(self)
         self.thread.start()
 
     def _serve(self):
@@ -143,6 +161,7 @@ class _RawListener:
         self.close()
 
     def close(self):
+        _ACTIVE_SERVERS.discard(self)
         try:
             self.sock.close()
         except Exception:
@@ -735,6 +754,7 @@ class _Socks5RateLimitedServer:
         self.sock.listen(1)
         self.port = self.sock.getsockname()[1]
         self.thread = threading.Thread(target=self._serve, daemon=True)
+        _ACTIVE_SERVERS.add(self)
         self.thread.start()
 
     def _serve(self):
@@ -759,8 +779,15 @@ class _Socks5RateLimitedServer:
             except OSError:
                 pass
 
+    def __del__(self):
+        self.close()
+
     def close(self):
-        self.sock.close()
+        _ACTIVE_SERVERS.discard(self)
+        try:
+            self.sock.close()
+        except Exception:
+            pass
 
 
 def test_http_ping_handles_429_rate_limit():

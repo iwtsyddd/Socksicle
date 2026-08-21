@@ -37,9 +37,10 @@ class ProvisionBackendTest(unittest.TestCase):
         self.addCleanup(ask_p.stop)
 
     def tearDown(self):
-        from PySide6.QtCore import QCoreApplication, QEvent
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        QCoreApplication.processEvents()
+        from PySide6.QtWidgets import QApplication
+        inst = QApplication.instance()
+        if inst is not None:
+            inst.processEvents()
 
     def test_existing_engine_reused(self):
         fake_path = Path("C:/existing/xray")
@@ -156,9 +157,10 @@ class AllEnginesProvisioningTest(unittest.TestCase):
         self.addCleanup(ask_p.stop)
 
     def tearDown(self):
-        from PySide6.QtCore import QCoreApplication, QEvent
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        QCoreApplication.processEvents()
+        from PySide6.QtWidgets import QApplication
+        inst = QApplication.instance()
+        if inst is not None:
+            inst.processEvents()
 
     def _setup_engine(self, engine_type, install_path):
         engine_inst = mock.MagicMock()
