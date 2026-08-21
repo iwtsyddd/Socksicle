@@ -1,10 +1,9 @@
 # Socksicle 🧦🧊
 
 
-## Screnshoot
-<img width="35%" alt="image" src="https://github.com/user-attachments/assets/11684261-97a0-4d4a-9da1-a42133a27be9" />
+## Screenshot
 
-## 
+<img width="35%" alt="Socksicle Screenshot" src="https://github.com/user-attachments/assets/11684261-97a0-4d4a-9da1-a42133a27be9" />
 
 Socksicle is a multi-protocol proxy client for **Linux and Windows**, built with
 PySide6 (Qt 6). It features a clean Material You (M3) inspired interface and a
