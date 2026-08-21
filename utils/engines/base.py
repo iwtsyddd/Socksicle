@@ -24,7 +24,8 @@ from .proc_guard import (
     write_pid_marker,
 )
 
-CREATE_NO_WINDOW = 0x08000000
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
 
 # Default local SOCKS5 proxy listen port; overridden by user settings.
 DEFAULT_LOCAL_PORT = 1080
@@ -205,7 +206,7 @@ class ProxyEngine(QObject):
                     "env": env,
                 }
                 if sys.platform == "win32":
-                    popen_kwargs["creationflags"] = (CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP)
+                    popen_kwargs["creationflags"] = (CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
                 elif sys.platform.startswith("linux"):
                     popen_kwargs["preexec_fn"] = set_pdeathsig
 
