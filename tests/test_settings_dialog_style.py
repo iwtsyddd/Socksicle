@@ -61,3 +61,17 @@ def test_container_rule_is_scoped(qapp):
     ss = _dialog_stylesheet(qapp)
     assert "QFrame#SettingsContainer {" in ss
     assert "QComboBox QAbstractItemView {" in ss
+
+
+def test_settings_dialog_autostart_checkbox(qapp, monkeypatch):
+    monkeypatch.setattr("ui.settings_dialog.is_autostart_enabled", lambda: True)
+    parent = _FakeParent()
+    parent.settings = {"autostart": True}
+    dlg = SettingsDialog(parent=parent, theme=M3Theme(preset_key="lavender"))
+    assert hasattr(dlg, "autostart_check")
+    assert dlg.autostart_check.isChecked() is True
+
+    dlg.autostart_check.setChecked(False)
+    settings = dlg.get_settings()
+    assert "autostart" in settings
+    assert settings["autostart"] is False

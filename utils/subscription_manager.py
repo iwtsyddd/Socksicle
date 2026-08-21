@@ -57,7 +57,7 @@ class SubscriptionManager(QObject):
         sub = self.get(name)
         return list(sub['servers']) if sub else []
 
-    def add(self, name, url):
+    def add(self, name, url, lock_export: bool = False, expires_at: int | None = None):
         """Fetch and store a new subscription. Returns True on success."""
         links, meta = parse_subscription(url, self._get_sub_settings())
         if not links:
@@ -66,11 +66,17 @@ class SubscriptionManager(QObject):
         seen_keys = set()
         for link in links:
             s = Server.from_link(link)
-            if s and s.unique_key not in seen_keys:
-                servers.append(s)
-                seen_keys.add(s.unique_key)
+            if s:
+                if lock_export:
+                    s.lock_export = True
+                if expires_at is not None:
+                    s.expires_at = expires_at
+                dedup_key = s.key.strip() if s.key else s.unique_key
+                if dedup_key not in seen_keys:
+                    servers.append(s)
+                    seen_keys.add(dedup_key)
         with self._lock:
-            self.subscriptions.append({
+            sub_dict = {
                 "name": name,
                 "url": url,
                 "servers": servers,
@@ -82,7 +88,12 @@ class SubscriptionManager(QObject):
                 "description": meta.get('description', ''),
                 "profile_update_interval": meta.get('profile_update_interval', 0),
                 "last_updated": time.time(),
-            })
+            }
+            if lock_export:
+                sub_dict["lock_export"] = True
+            if expires_at is not None:
+                sub_dict["expires_at"] = expires_at
+            self.subscriptions.append(sub_dict)
             save_subscriptions(self._serialize_unlocked())
         return True
 
@@ -98,18 +109,27 @@ class SubscriptionManager(QObject):
                 self.updated.emit(False, 0)
             return
 
-        old_keys = {s.unique_key for s in sub.get('servers', [])}
+        old_keys = {s.key.strip() if s.key else s.unique_key for s in sub.get('servers', [])}
         new_servers = []
         seen_keys = set()
         new_count = 0
 
+        sub_lock_export = bool(sub.get('lock_export', False))
+        sub_expires_at = sub.get('expires_at')
+
         for link in links:
             s = Server.from_link(link)
-            if s and s.unique_key not in seen_keys:
-                new_servers.append(s)
-                seen_keys.add(s.unique_key)
-                if s.unique_key not in old_keys:
-                    new_count += 1
+            if s:
+                if sub_lock_export:
+                    s.lock_export = True
+                if sub_expires_at is not None:
+                    s.expires_at = sub_expires_at
+                dedup_key = s.key.strip() if s.key else s.unique_key
+                if dedup_key not in seen_keys:
+                    new_servers.append(s)
+                    seen_keys.add(dedup_key)
+                    if dedup_key not in old_keys:
+                        new_count += 1
 
         with self._lock:
             sub['servers'] = new_servers

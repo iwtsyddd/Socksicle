@@ -5,6 +5,8 @@ The shared startup flow lives here; platform-specific behaviour is delegated
 to :mod:`utils.platform_startup`, which no-ops on every platform where a
 Windows-only feature does not apply.
 """
+import argparse
+import logging
 import sys
 
 # Must be imported before PySide6 so the Windows Qt environment variables
@@ -15,7 +17,8 @@ from utils.platform_startup import (  # noqa: E402
     initialize,
     install_native_handlers,
 )
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 from PySide6.QtGui import QIcon
 
 from ui.main_window import RoundedWindow
@@ -67,7 +70,20 @@ def _apply_platform_style(app):
         pass
 
 
-def main():
+def parse_args(argv=None):
+    """Parse command line arguments for Socksicle."""
+    parser = argparse.ArgumentParser(description="Socksicle Proxy Client")
+    parser.add_argument(
+        "-m", "--minimized",
+        action="store_true",
+        help="Start application minimized to system tray",
+    )
+    args, _ = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
     initialize()
     apply_high_dpi_policy()
 
@@ -96,7 +112,22 @@ def main():
 
     window = RoundedWindow()
     install_native_handlers(app, window)
-    window.show()
+
+    if args.minimized:
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            logging.getLogger("startup").info("Starting minimized to system tray (--minimized)")
+        else:
+            logging.getLogger("startup").info(
+                "System tray is not available; showing main window instead of starting minimized."
+            )
+            window.show()
+    else:
+        window.show()
+
+    # Initialize bundled Noto Color Emoji font after window is shown
+    from utils.font_utils import init_app_fonts
+    QTimer.singleShot(50, init_app_fonts)
+
     sys.exit(app.exec())
 
 

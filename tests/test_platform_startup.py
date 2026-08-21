@@ -132,13 +132,15 @@ class ApplyHighDpiPolicyTest(unittest.TestCase):
 
 
 class InstallNativeHandlersTest(unittest.TestCase):
-    """Tray/power native handlers are wired only on Windows."""
+    """Tray/power native handlers on Windows, D-Bus handlers on Linux."""
 
     def test_windows_installs_tray_and_power_filter(self):
         app = mock.Mock()
         window = mock.Mock()
         with mock.patch.object(platform_startup, "is_windows",
-                               return_value=True):
+                               return_value=True), \
+             mock.patch.object(platform_startup, "is_linux",
+                               return_value=False):
             filter_ = platform_startup.install_native_handlers(app, window)
         self.assertIsInstance(filter_, TrayAndPowerFilter)
         app.installNativeEventFilter.assert_called_once_with(filter_)
@@ -148,15 +150,168 @@ class InstallNativeHandlersTest(unittest.TestCase):
         filter_.on_resume()
         window.reconnect_after_resume.assert_called_once_with()
 
-    def test_linux_skips_native_handlers(self):
+    def test_linux_installs_dbus_power_network_filter(self):
+        app = mock.Mock()
+        window = mock.Mock()
+        fake_dbus = mock.Mock()
+        fake_dbus.isConnected.return_value = True
+        fake_dbus.connect.return_value = True
+
+        with mock.patch.object(platform_startup, "is_windows",
+                               return_value=False), \
+             mock.patch.object(platform_startup, "is_linux",
+                               return_value=True), \
+             mock.patch("PySide6.QtDBus.QDBusConnection.systemBus",
+                        return_value=fake_dbus, create=True):
+            filter_ = platform_startup.install_native_handlers(app, window)
+
+        self.assertIsInstance(filter_, platform_startup.LinuxDBusPowerNetworkFilter)
+        self.assertIs(app.native_filter, filter_)
+        # Test signal invocation through filter
+        filter_.handle_prepare_for_sleep(False)
+        window.reconnect_after_resume.assert_called_once_with()
+
+    def test_linux_handles_dbus_init_exception_gracefully(self):
+        app = mock.Mock()
+        window = mock.Mock()
+        with mock.patch.object(platform_startup, "is_windows",
+                               return_value=False), \
+             mock.patch.object(platform_startup, "is_linux",
+                               return_value=True), \
+             mock.patch.object(platform_startup,
+                               "LinuxDBusPowerNetworkFilter",
+                               side_effect=RuntimeError("D-Bus init failed")):
+            filter_ = platform_startup.install_native_handlers(app, window)
+        self.assertIsNone(filter_)
+
+    def test_other_platform_skips_native_handlers(self):
         app = mock.Mock()
         with mock.patch.object(platform_startup, "is_windows",
+                               return_value=False), \
+             mock.patch.object(platform_startup, "is_linux",
                                return_value=False):
             filter_ = platform_startup.install_native_handlers(
                 app, mock.Mock())
         self.assertIsNone(filter_)
         app.installNativeEventFilter.assert_not_called()
         self.assertNotIn("native_filter", app._mock_children)
+
+
+class LinuxDBusFilterTest(unittest.TestCase):
+    """Linux D-Bus signal subscription, sleep/wake, and network change handling."""
+
+    def setUp(self):
+        self.resume = mock.Mock()
+        self.net_change = mock.Mock()
+        self.fake_bus = mock.Mock()
+        self.fake_bus.isConnected.return_value = True
+        self.fake_bus.connect.return_value = True
+
+    def test_successful_dbus_registration(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        self.assertTrue(filter_.is_connected)
+        self.assertTrue(filter_._login1_connected)
+        self.assertTrue(filter_._nm_connected)
+        self.assertEqual(self.fake_bus.connect.call_count, 2)
+
+    def test_prepare_for_sleep_true_sets_sleeping_flag(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        filter_.handle_prepare_for_sleep(True)
+        self.assertTrue(filter_.is_sleeping)
+        self.resume.assert_not_called()
+
+    def test_prepare_for_sleep_false_wakes_and_calls_resume(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        filter_.handle_prepare_for_sleep(True)
+        filter_.handle_prepare_for_sleep(False)
+        self.assertFalse(filter_.is_sleeping)
+        self.resume.assert_called_once_with()
+
+    def test_prepare_for_sleep_handles_callback_exception_gracefully(self):
+        self.resume.side_effect = RuntimeError("resume callback error")
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            bus=self.fake_bus,
+        )
+        # Should not raise exception
+        filter_.handle_prepare_for_sleep(False)
+        self.resume.assert_called_once_with()
+
+    def test_nm_state_changed_connected_global_triggers_reconnect(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        filter_.handle_nm_state_changed(platform_startup.NM_STATE_CONNECTED_GLOBAL)
+        self.net_change.assert_called_once_with()
+        self.assertEqual(filter_._last_nm_state, platform_startup.NM_STATE_CONNECTED_GLOBAL)
+
+    def test_nm_state_changed_other_states_do_not_trigger_reconnect(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        for state in (platform_startup.NM_STATE_DISCONNECTED,
+                      platform_startup.NM_STATE_CONNECTING,
+                      platform_startup.NM_STATE_ASLEEP,
+                      platform_startup.NM_STATE_CONNECTED_LOCAL):
+            filter_.handle_nm_state_changed(state)
+        self.net_change.assert_not_called()
+        self.assertEqual(filter_._last_nm_state, platform_startup.NM_STATE_CONNECTED_LOCAL)
+
+    def test_nm_state_changed_handles_invalid_and_callback_errors(self):
+        self.net_change.side_effect = RuntimeError("network callback error")
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            on_network_change=self.net_change,
+            bus=self.fake_bus,
+        )
+        filter_.handle_nm_state_changed("invalid_state")
+        self.net_change.assert_not_called()
+        # Should not raise exception when callback fails
+        filter_.handle_nm_state_changed(platform_startup.NM_STATE_CONNECTED_GLOBAL)
+        self.net_change.assert_called_once_with()
+
+    def test_dbus_not_connected_fallback(self):
+        self.fake_bus.isConnected.return_value = False
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            bus=self.fake_bus,
+        )
+        self.assertFalse(filter_.is_connected)
+        self.fake_bus.connect.assert_not_called()
+
+    def test_qtdbus_import_error_fallback(self):
+        with mock.patch("builtins.__import__", side_effect=ImportError("No QtDBus")):
+            filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+                on_resume=self.resume,
+                bus=None,
+            )
+        self.assertFalse(filter_.is_connected)
+
+    def test_disconnect_signals(self):
+        filter_ = platform_startup.LinuxDBusPowerNetworkFilter(
+            on_resume=self.resume,
+            bus=self.fake_bus,
+        )
+        self.assertTrue(filter_.is_connected)
+        filter_.disconnect_signals()
+        self.assertFalse(filter_.is_connected)
+        self.assertEqual(self.fake_bus.disconnect.call_count, 2)
 
 
 class ExcepthookTest(unittest.TestCase):
@@ -229,6 +384,147 @@ class DesktopFileNameTest(unittest.TestCase):
                                return_value=False):
             self.assertEqual(platform_startup.desktop_file_name(),
                              "Socksicle.desktop")
+
+
+class XDGAutostartLinuxTest(unittest.TestCase):
+    """Unit tests for Linux XDG Autostart (.desktop file management)."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.config_dir = Path(self.tmp_dir.name)
+        self.desktop_file = self.config_dir / "autostart" / "socksicle.desktop"
+
+    def test_get_autostart_desktop_path_default(self):
+        with mock.patch.dict(os.environ, {}, clear=True), \
+             mock.patch.object(platform_startup.Path, "home",
+                               return_value=platform_startup.Path("/home/testuser")):
+            path = platform_startup.get_autostart_desktop_path()
+            self.assertEqual(
+                str(path).replace("\\", "/"),
+                "/home/testuser/.config/autostart/socksicle.desktop"
+            )
+
+    def test_get_autostart_desktop_path_custom_xdg(self):
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": "/custom/config"}):
+            path = platform_startup.get_autostart_desktop_path()
+            self.assertEqual(
+                str(path).replace("\\", "/"),
+                "/custom/config/autostart/socksicle.desktop"
+            )
+
+    def test_set_autostart_linux_enable(self):
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            ok = platform_startup.set_autostart(True)
+            self.assertTrue(ok)
+            self.assertTrue(self.desktop_file.is_file())
+            content = self.desktop_file.read_text(encoding="utf-8")
+            self.assertIn("[Desktop Entry]", content)
+            self.assertIn("Type=Application", content)
+            self.assertIn("Name=Socksicle", content)
+            self.assertIn("Icon=socksicle", content)
+            self.assertIn("--minimized", content)
+            self.assertIn("X-GNOME-Autostart-enabled=true", content)
+
+    def test_set_autostart_linux_custom_app_path(self):
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            ok = platform_startup.set_autostart(True, app_path="/usr/bin/socksicle")
+            self.assertTrue(ok)
+            content = self.desktop_file.read_text(encoding="utf-8")
+            self.assertIn("Exec=/usr/bin/socksicle --minimized", content)
+
+    def test_is_autostart_enabled_linux_true(self):
+        self.desktop_file.parent.mkdir(parents=True, exist_ok=True)
+        self.desktop_file.write_text(
+            "[Desktop Entry]\nType=Application\nName=Socksicle\nExec=socksicle --minimized\n",
+            encoding="utf-8"
+        )
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            self.assertTrue(platform_startup.is_autostart_enabled())
+
+    def test_is_autostart_enabled_linux_false_when_missing(self):
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            self.assertFalse(platform_startup.is_autostart_enabled())
+
+    def test_is_autostart_enabled_linux_false_when_hidden(self):
+        self.desktop_file.parent.mkdir(parents=True, exist_ok=True)
+        self.desktop_file.write_text(
+            "[Desktop Entry]\nType=Application\nName=Socksicle\nHidden=true\n",
+            encoding="utf-8"
+        )
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            self.assertFalse(platform_startup.is_autostart_enabled())
+
+    def test_set_autostart_linux_disable(self):
+        self.desktop_file.parent.mkdir(parents=True, exist_ok=True)
+        self.desktop_file.write_text("[Desktop Entry]\nName=Socksicle\n", encoding="utf-8")
+        self.assertTrue(self.desktop_file.exists())
+
+        with mock.patch.object(platform_startup, "is_linux", return_value=True), \
+             mock.patch.object(platform_startup, "is_windows", return_value=False), \
+             mock.patch.object(platform_startup, "get_autostart_desktop_path",
+                               return_value=self.desktop_file):
+            ok = platform_startup.set_autostart(False)
+            self.assertTrue(ok)
+            self.assertFalse(self.desktop_file.exists())
+
+
+class WindowsAutostartTest(unittest.TestCase):
+    """Unit tests for Windows registry autostart management."""
+
+    def test_is_autostart_enabled_windows_true(self):
+        mock_winreg = mock.MagicMock()
+        mock_winreg.QueryValueEx.return_value = ("C:\\Socksicle.exe --minimized", 1)
+        with mock.patch.object(platform_startup, "is_windows", return_value=True), \
+             mock.patch.dict("sys.modules", {"winreg": mock_winreg}):
+            self.assertTrue(platform_startup.is_autostart_enabled())
+
+    def test_is_autostart_enabled_windows_false(self):
+        mock_winreg = mock.MagicMock()
+        mock_winreg.OpenKey.side_effect = OSError("Key not found")
+        with mock.patch.object(platform_startup, "is_windows", return_value=True), \
+             mock.patch.dict("sys.modules", {"winreg": mock_winreg}):
+            self.assertFalse(platform_startup.is_autostart_enabled())
+
+    def test_set_autostart_windows_enable(self):
+        mock_winreg = mock.MagicMock()
+        mock_key = mock.MagicMock()
+        mock_winreg.OpenKey.return_value = mock_key
+        with mock.patch.object(platform_startup, "is_windows", return_value=True), \
+             mock.patch.dict("sys.modules", {"winreg": mock_winreg}):
+            ok = platform_startup.set_autostart(True, app_path="C:\\app.exe")
+            self.assertTrue(ok)
+            mock_winreg.SetValueEx.assert_called_once()
+            args = mock_winreg.SetValueEx.call_args[0]
+            self.assertEqual(args[1], "Socksicle")
+            self.assertIn("--minimized", args[4])
+
+    def test_set_autostart_windows_disable(self):
+        mock_winreg = mock.MagicMock()
+        mock_key = mock.MagicMock()
+        mock_winreg.OpenKey.return_value = mock_key
+        with mock.patch.object(platform_startup, "is_windows", return_value=True), \
+             mock.patch.dict("sys.modules", {"winreg": mock_winreg}):
+            ok = platform_startup.set_autostart(False)
+            self.assertTrue(ok)
+            mock_winreg.DeleteValue.assert_called_once_with(mock_key, "Socksicle")
 
 
 if __name__ == "__main__":

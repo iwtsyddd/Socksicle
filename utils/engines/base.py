@@ -19,6 +19,7 @@ from PySide6.QtCore import QObject, Signal
 from .proc_guard import (
     cleanup_stale_engines,
     port_available,
+    wait_for_port_available,
     remove_pid_marker,
     write_pid_marker,
 )
@@ -46,6 +47,33 @@ class InstallResult(NamedTuple):
     ok: bool
     path: Path | None
     reason: str
+
+
+def set_pdeathsig(sig: int | None = None) -> bool:
+    """Set PR_SET_PDEATHSIG on Linux so child process receives SIGTERM when parent dies.
+
+    Uses libc.prctl(PR_SET_PDEATHSIG, sig) via ctypes. Safe to call on any platform
+    (no-op on non-Linux).
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    if sig is None:
+        import signal
+        sig = signal.SIGTERM
+    try:
+        import ctypes
+        import ctypes.util
+        PR_SET_PDEATHSIG = 1
+        libc_name = ctypes.util.find_library("c") or "libc.so.6"
+        try:
+            libc = ctypes.CDLL(libc_name, use_errno=True)
+        except OSError:
+            libc = ctypes.CDLL(None, use_errno=True)
+        res = libc.prctl(PR_SET_PDEATHSIG, ctypes.c_ulong(int(sig)), ctypes.c_ulong(0), ctypes.c_ulong(0), ctypes.c_ulong(0))
+        return res == 0
+    except Exception as e:
+        log.debug("Failed to set PR_SET_PDEATHSIG: %s", e)
+        return False
 
 
 class ProxyEngine(QObject):
@@ -135,14 +163,14 @@ class ProxyEngine(QObject):
             return False
 
         with self._lock:
-            if self.is_connected:
+            if self.is_connected or self.process is not None:
                 self.disconnect_from_server()
 
             # A crashed previous session may have left our engine process
             # alive and holding sockets; kill only what our pid marker owns.
             cleanup_stale_engines([self.engine_type.value])
 
-            if not port_available("127.0.0.1", int(self.local_port)):
+            if not wait_for_port_available("127.0.0.1", int(self.local_port), timeout=2.0):
                 msg = (f"Connection failed: local port {int(self.local_port)} is in "
                        "use by another process. Change the local port in "
                        "Settings or stop the program using it.")
@@ -153,23 +181,37 @@ class ProxyEngine(QObject):
             try:
                 self.current_server = server
                 args = [str(binary), *self.build_args(server)]
-                flags = (CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if sys.platform == "win32" else 0
+                bin_dir = str(binary.parent)
                 env = os.environ.copy()
                 env["ENABLE_DEPRECATED_LEGACY_DNS_SERVERS"] = "true"
                 env["ENABLE_DEPRECATED_OUTBOUND_DNS_RULE_ITEM"] = "true"
                 env["ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER"] = "true"
                 env["ENABLE_DEPRECATED_LEGACY_INBOUND_FIELDS"] = "true"
+                env["XRAY_LOCATION_ASSET"] = bin_dir
+                env["xray.location.asset"] = bin_dir
+                env["V2RAY_LOCATION_ASSET"] = bin_dir
+                if sys.platform == "win32":
+                    env["PATH"] = f"{bin_dir};" + env.get("PATH", "")
+
+                popen_kwargs = {
+                    "cwd": bin_dir,
+                    "stdin": subprocess.DEVNULL,
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.PIPE,
+                    "text": True,
+                    "encoding": "utf-8",
+                    "errors": "replace",
+                    "close_fds": (sys.platform != "win32"),
+                    "env": env,
+                }
+                if sys.platform == "win32":
+                    popen_kwargs["creationflags"] = (CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP)
+                elif sys.platform.startswith("linux"):
+                    popen_kwargs["preexec_fn"] = set_pdeathsig
+
                 self.process = subprocess.Popen(
                     args,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=flags,
-                    close_fds=(sys.platform != "win32"),
-                    env=env,
+                    **popen_kwargs,
                 )
                 self._marker_name = self.engine_type.value
                 write_pid_marker(self._marker_name, self.process.pid,
@@ -228,7 +270,8 @@ class ProxyEngine(QObject):
                     continue
                 low = line.lower()
                 is_actual_error = any(w in low for w in ("fatal", "panic", "error"))
-                hint = self._bind_error_hint(line) if is_err else None
+                # Only check for startup bind errors before the proxy is confirmed connected
+                hint = self._bind_error_hint(line) if (is_err and not self.is_connected) else None
                 if hint:
                     log.warning("[%s-log] %s", self.process_name(), hint)
                     self.logUpdated.emit(f"Error: {hint}")
@@ -252,11 +295,20 @@ class ProxyEngine(QObject):
 
     def _bind_error_hint(self, line):
         """Translate an engine bind failure line into an actionable hint."""
-        low = line.lower()
-        if not any(k in low for k in ("bind", "only one usage",
-                                      "address already in use", "eaddrinuse",
-                                      "failed to listen")):
+        if self.is_connected:
             return None
+        low = line.lower()
+        has_bind_err = any(k in low for k in (
+            "address already in use",
+            "eaddrinuse",
+            "only one usage",
+            "failed to bind",
+            "failed to listen",
+            "cannot bind",
+        )) or ("bind" in low and any(k in low for k in ("listen", "listener", "fatal", "failed to start")))
+        if not has_bind_err:
+            return None
+
         api_port = getattr(self, "_api_port", None) or \
             getattr(self, "_clash_port", None)
         candidates = [("local SOCKS5 port", int(self.local_port))]
@@ -271,29 +323,39 @@ class ProxyEngine(QObject):
                     hint += (". Stop the conflicting program or change the "
                              "port in Settings.")
                 return hint
-        return (f"Could not bind a local port - is another "
-                f"{self.process_name()} instance still running?")
+        if any(k in low for k in ("fatal", "failed to start", "failed to listen", "failed to bind")):
+            return (f"Could not bind a local port - is another "
+                    f"{self.process_name()} instance still running?")
+        return None
 
     def teardown(self):
         with self._lock:
             proc = self.process
             if proc:
-                log.info("Stopping %s (pid=%s)", self.process_name(), proc.pid)
+                pid = proc.pid
+                log.info("Stopping %s (pid=%s)", self.process_name(), pid)
                 if proc.poll() is None:
                     try:
                         if sys.platform == "win32":
-                            import signal
+                            from .proc_guard import kill_process
                             try:
-                                os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
-                            except (OSError, ValueError):
                                 proc.terminate()
+                                proc.wait(timeout=0.6)
+                            except (OSError, subprocess.TimeoutExpired):
+                                try:
+                                    proc.kill()
+                                    proc.wait(timeout=0.5)
+                                except (OSError, subprocess.TimeoutExpired):
+                                    pass
+                            if proc.poll() is None:
+                                kill_process(pid)
                         else:
                             proc.terminate()
-                        try:
-                            proc.wait(timeout=2.5)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                            proc.wait(timeout=1.5)
+                            try:
+                                proc.wait(timeout=1.5)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                                proc.wait(timeout=1.0)
                     except (OSError, subprocess.SubprocessError) as e:
                         log.warning("Error stopping %s: %s",
                                     self.process_name(), e)

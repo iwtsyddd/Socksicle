@@ -1,10 +1,15 @@
+import base64
+import secrets
+
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
     QLineEdit, QSpinBox, QCheckBox, QFormLayout, QFrame,
-    QComboBox, QScrollArea, QWidget
+    QComboBox, QScrollArea, QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt
 
+from utils.platform_startup import is_autostart_enabled
+from utils.platform_utils import is_admin, is_windows
 from utils.sub_manager import USER_AGENT_PRESETS
 from utils.window_utils import configure_window
 from utils.engines.base import DEFAULT_LOCAL_PORT
@@ -22,6 +27,15 @@ PING_METHOD_LABELS = {
     "http_get": "HTTP GET",
     "http_head": "HTTP HEAD",
     "tcp_connect": "TCP connect",
+}
+
+DNS_PRESETS = {
+    "default": ("System / Core Default (Auto)", ""),
+    "cloudflare": ("Cloudflare DoH (1.1.1.1)", "https://1.1.1.1/dns-query"),
+    "quad9": ("Quad9 DoH (Security / Anti-Malware)", "https://dns.quad9.net/dns-query"),
+    "adguard": ("AdGuard DoH (AdBlock & Privacy)", "https://dns.adguard-dns.com/dns-query"),
+    "google": ("Google DoH (8.8.8.8)", "https://dns.google/dns-query"),
+    "custom": ("Custom DNS (DoH / DoT)...", ""),
 }
 
 
@@ -247,6 +261,11 @@ class SettingsDialog(QDialog):
         self.auto_connect_check.setChecked(auto_connect)
         form_layout.addRow("", self.auto_connect_check)
 
+        autostart_val = parent.settings.get("autostart") if parent and hasattr(parent, "settings") and isinstance(parent.settings, dict) and "autostart" in parent.settings else is_autostart_enabled()
+        self.autostart_check = QCheckBox("Start with system (Autostart)")
+        self.autostart_check.setChecked(bool(autostart_val))
+        form_layout.addRow("", self.autostart_check)
+
         self.minimize_to_tray_check = QCheckBox("Minimize to tray on close")
         self.minimize_to_tray_check.setChecked(parent.settings.get("minimize_to_tray", True) if parent else True)
         form_layout.addRow("", self.minimize_to_tray_check)
@@ -268,6 +287,27 @@ class SettingsDialog(QDialog):
         idx = ua_keys.index(saved_ua) if saved_ua in ua_keys else 0
         self.ua_combo.setCurrentIndex(idx)
         form_layout.addRow("UA preset:", self.ua_combo)
+
+        # --- Custom Secure DNS ---
+        dns_label = QLabel("Secure DNS (DoH / DoT):")
+        dns_label.setStyleSheet(f"color: {theme.on_surface}; font-weight: bold; font-size: 13px; margin-top: 6px;")
+        form_layout.addRow(dns_label)
+
+        self.dns_combo = QComboBox()
+        for key, (label, val) in DNS_PRESETS.items():
+            self.dns_combo.addItem(label, key)
+        saved_dns_preset = parent.settings.get("dns_preset", "default") if parent else "default"
+        dns_keys = list(DNS_PRESETS.keys())
+        dns_idx = dns_keys.index(saved_dns_preset) if saved_dns_preset in dns_keys else 0
+        self.dns_combo.setCurrentIndex(dns_idx)
+        self.dns_combo.currentIndexChanged.connect(self._on_dns_preset_changed)
+        form_layout.addRow("DNS provider:", self.dns_combo)
+
+        self.custom_dns_input = QLineEdit()
+        self.custom_dns_input.setPlaceholderText("https://... or tls://... or 1.1.1.1")
+        self.custom_dns_input.setText(parent.settings.get("custom_dns_manual", "") if parent else "")
+        self.custom_dns_input.setVisible(saved_dns_preset == "custom")
+        form_layout.addRow("Custom DNS:", self.custom_dns_input)
 
         # --- Ping method ---
         self.ping_method_combo = QComboBox()
@@ -291,16 +331,48 @@ class SettingsDialog(QDialog):
         self.hwid_input.setVisible(self.hwid_check.isChecked())
         form_layout.addRow("HWID:", self.hwid_input)
 
-        self.tws2_key_input = QLineEdit()
-        self.tws2_key_input.setReadOnly(True)
-        self.tws2_key_input.setPlaceholderText("Auto-generated on first launch")
-        self.tws2_key_input.setText(parent.settings.get("tws2_share_key", ""))
-        form_layout.addRow("TwinSock key:", self.tws2_key_input)
+        self.is_legacy_tws2 = (
+            bool(parent.settings.get("tws2_share_key")) and
+            not bool(parent.settings.get("tws3_share_key"))
+        ) if parent and hasattr(parent, "settings") and isinstance(parent.settings, dict) else False
 
-        key_hint = QLabel("Personal key that signs and unlocks tws2:// links. Keep it stored securely.")
-        key_hint.setWordWrap(True)
-        key_hint.setStyleSheet(f"color: {theme.on_surface_variant}; font-size: 12px;")
-        form_layout.addRow("", key_hint)
+        self.tws_key_input = QLineEdit()
+        self.tws_key_input.setReadOnly(True)
+        self.tws_key_input.setPlaceholderText("Auto-generated on first launch")
+        current_tws_key = (
+            parent.settings.get("tws3_share_key") or
+            parent.settings.get("tws2_share_key", "")
+        ) if parent and hasattr(parent, "settings") and isinstance(parent.settings, dict) else ""
+        self.tws_key_input.setText(current_tws_key)
+        form_layout.addRow("TwinSock key:", self.tws_key_input)
+
+        if self.is_legacy_tws2:
+            self.upgrade_tws3_btn = QPushButton("Generate TWS3 Key (Recommended)")
+            self.upgrade_tws3_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {theme.primary};
+                    color: #1c1930;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 6px 14px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    margin-top: 4px;
+                }}
+                QPushButton:hover {{
+                    background-color: rgba(187, 134, 252, 0.85);
+                }}
+            """)
+            self.upgrade_tws3_btn.clicked.connect(self._on_upgrade_tws3_clicked)
+            form_layout.addRow("", self.upgrade_tws3_btn)
+            self.key_hint = QLabel("You are using a legacy v2 key. Generate a v3 key to upgrade to AES-256-GCM AEAD.")
+        else:
+            self.upgrade_tws3_btn = None
+            self.key_hint = QLabel("Personal key that signs and unlocks tws3:// links. Keep it stored securely.")
+
+        self.key_hint.setWordWrap(True)
+        self.key_hint.setStyleSheet(f"color: {theme.on_surface_variant}; font-size: 12px;")
+        form_layout.addRow("", self.key_hint)
 
         # --- Beta Features ---
         beta_label = QLabel("Beta Features")
@@ -314,13 +386,26 @@ class SettingsDialog(QDialog):
 
         self.tun_hint = QLabel(
             "⚠️ TUN Mode routes all system traffic (games, apps, CLI) through the tunnel.\n"
-            "• Feature is currently in Beta.\n"
-            "• Requires Administrator privileges (UAC).\n"
+            "• Requires elevated privileges (Windows UAC / Linux Polkit capabilities).\n"
             "• Automatically switches proxy engine to sing-box (sslocal and Xray are disabled in TUN mode)."
         )
         self.tun_hint.setWordWrap(True)
         self.tun_hint.setStyleSheet(f"color: {theme.on_surface_variant}; font-size: 11px; margin-top: 2px;")
         form_layout.addRow("", self.tun_hint)
+
+        self.killswitch_check = QCheckBox("Enable Kill Switch (Beta)")
+        self.killswitch_check.setChecked(parent.settings.get("kill_switch", False) if parent else False)
+        self.killswitch_check.toggled.connect(self._on_killswitch_toggled)
+        form_layout.addRow("", self.killswitch_check)
+
+        self.killswitch_hint = QLabel(
+            "🛡️ Blocks all direct internet traffic via OS firewall upon unexpected tunnel drops to prevent real IP leaks.\n"
+            "• Local network (LAN) and proxy server endpoints remain accessible.\n"
+            "• Requires Administrator privileges on Windows (Windows Defender Firewall rules)."
+        )
+        self.killswitch_hint.setWordWrap(True)
+        self.killswitch_hint.setStyleSheet(f"color: {theme.on_surface_variant}; font-size: 11px; margin-top: 2px;")
+        form_layout.addRow("", self.killswitch_hint)
 
         if self.tun_mode_check.isChecked():
             self._on_tun_toggled(True)
@@ -350,6 +435,26 @@ class SettingsDialog(QDialog):
         button_layout.addWidget(self.save_button)
         container_layout.addLayout(button_layout)
 
+    def _on_dns_preset_changed(self, idx):
+        preset = self.dns_combo.itemData(idx)
+        self.custom_dns_input.setVisible(preset == "custom")
+
+    def _on_killswitch_toggled(self, checked):
+        if checked and is_windows() and not is_admin():
+            reply = QMessageBox.question(
+                self,
+                "Administrator Rights Required",
+                "Kill Switch requires Administrator privileges to configure Windows Defender Firewall rules.\n\n"
+                "Would you like to restart Socksicle with elevated Administrator privileges now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                from utils.platform_utils import elevate_restart
+                elevate_restart()
+            else:
+                self.killswitch_check.setChecked(False)
+
     def _on_theme_preset_changed(self, idx):
         preset = self.theme_combo.itemData(idx)
         parent = self.parent()
@@ -373,6 +478,19 @@ class SettingsDialog(QDialog):
             self.engine_combo.setEnabled(True)
             self.engine_combo.setToolTip("")
 
+    def _on_upgrade_tws3_clicked(self):
+        new_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+        self.tws_key_input.setText(new_key)
+        self.is_legacy_tws2 = False
+        if self.upgrade_tws3_btn:
+            self.upgrade_tws3_btn.hide()
+        self.key_hint.setText("Personal key that signs and unlocks tws3:// links. Keep it stored securely.")
+        QMessageBox.information(
+            self, "TwinSock Key Upgraded",
+            "Generated a new TwinSock v3 key.\n\n"
+            "Save settings to apply. Remember to share this new key with your peers for tws3:// links."
+        )
+
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton and e.position().y() < 60:
             self._dragging = True
@@ -387,17 +505,32 @@ class SettingsDialog(QDialog):
 
     def get_settings(self):
         engine_val = "sing-box" if self.tun_mode_check.isChecked() else self.engine_combo.currentData()
-        return {
+        dns_preset = self.dns_combo.currentData()
+        if dns_preset == "custom":
+            custom_dns_val = self.custom_dns_input.text().strip()
+        else:
+            custom_dns_val = DNS_PRESETS.get(dns_preset, ("", ""))[1]
+
+        res = {
             "engine": engine_val,
             "ping_method": self.ping_method_combo.currentData(),
             "local_port": self.port_input.value(),
             "auto_connect": self.auto_connect_check.isChecked(),
+            "autostart": self.autostart_check.isChecked(),
             "minimize_to_tray": self.minimize_to_tray_check.isChecked(),
             "auto_update_subs": self.auto_update_check.isChecked(),
             "user_agent_key": self.ua_combo.currentText(),
             "fake_hwid": self.hwid_check.isChecked(),
             "hwid_value": self.hwid_input.text().strip(),
-            "tws2_share_key": self.tws2_key_input.text().strip(),
             "tun_mode": self.tun_mode_check.isChecked(),
+            "kill_switch": self.killswitch_check.isChecked(),
+            "dns_preset": dns_preset,
+            "custom_dns_manual": self.custom_dns_input.text().strip(),
+            "custom_dns": custom_dns_val,
             "theme_preset": self.theme_combo.currentData(),
         }
+        if self.is_legacy_tws2:
+            res["tws2_share_key"] = self.tws_key_input.text().strip()
+        else:
+            res["tws3_share_key"] = self.tws_key_input.text().strip()
+        return res

@@ -11,7 +11,8 @@ _PROTOCOL_HINTS = {
     "vmess://": "VMess",
     "hysteria2://": "Hysteria 2",
     "hy2://": "Hysteria 2",
-    "tws2://": "TwinSock Share",
+    "tws3://": "TwinSock Share",
+    "tws2://": "TwinSock Share (Legacy)",
     "https://": "Subscription URL",
     "http://": "Subscription URL",
 }
@@ -19,9 +20,10 @@ _PROTOCOL_HINTS = {
 
 class AddServerDialog(QDialog):
 
-    def __init__(self, parent=None, theme=None):
+    def __init__(self, parent=None, theme=None, has_legacy_tws2: bool = False):
         super().__init__(parent)
         self.theme = theme
+        self.has_legacy_tws2 = has_legacy_tws2
         self.setWindowFlags(Qt.Dialog)
         configure_window(self)
 
@@ -55,9 +57,14 @@ class AddServerDialog(QDialog):
         title.setStyleSheet(f"font-size: 18px; font-weight: bold; margin-bottom: 16px; color: {theme.on_surface};")
         layout.addWidget(title)
 
-        layout.addWidget(QLabel("Paste ss://, vless://, vmess://, hysteria2://, subscription URL or tws2://"))
+        prompt_text = (
+            "Paste ss://, vless://, vmess://, hysteria2://, subscription URL, tws3:// or tws2://"
+            if self.has_legacy_tws2
+            else "Paste ss://, vless://, vmess://, hysteria2://, subscription URL or tws3://"
+        )
+        layout.addWidget(QLabel(prompt_text))
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("ss://... / vless://... / vmess://... / hy2://... / https://... / tws2://...")
+        self.input_field.setPlaceholderText("ss://... / vless://... / vmess://... / hy2://... / https://... / tws3://...")
         self.input_field.textChanged.connect(self._on_text_changed)
         layout.addWidget(self.input_field)
 
@@ -89,14 +96,25 @@ class AddServerDialog(QDialog):
     def _on_text_changed(self, text):
         text = text.strip().lower()
         detected = None
-        for prefix, label in _PROTOCOL_HINTS.items():
-            if text.startswith(prefix):
-                detected = label
-                break
+        is_warn = False
+        if text.startswith("tws2://") or text.startswith("tws2."):
+            if self.has_legacy_tws2:
+                detected = "TwinSock Share (Legacy)"
+            else:
+                detected = "TwinSock Share (Legacy - Deprecated, no v2 key)"
+                is_warn = True
+        else:
+            for prefix, label in _PROTOCOL_HINTS.items():
+                if prefix.startswith("tws2"):
+                    continue
+                if text.startswith(prefix):
+                    detected = label
+                    break
         if detected:
             self.hint_label.setText(f"Detected: {detected}")
+            color = self.theme.error if is_warn else self.theme.primary
             self.hint_label.setStyleSheet(
-                f"color: {self.theme.primary}; font-size: 11px; font-weight: bold; "
+                f"color: {color}; font-size: 11px; font-weight: bold; "
                 f"margin-top: 2px; border: none; background: transparent;"
             )
         else:

@@ -43,11 +43,14 @@ def parse_links_from_text(text):
     return links
 
 
+_MBPS_RE = re.compile(r'(?i)(mbps|mb/s|m|kbps|k).*')
+
+
 def _parse_mbps(val: str) -> int:
     """Parse bandwidth string into integer Mbps."""
     if not val:
         return 0
-    cleaned = re.sub(r'(?i)(mbps|mb/s|m|kbps|k).*', '', val).strip()
+    cleaned = _MBPS_RE.sub('', val).strip()
     try:
         return int(cleaned)
     except (ValueError, TypeError):
@@ -121,7 +124,8 @@ def _parse_hysteria2(raw_link, default_name="Server"):
         up_str = _param('up') or _param('upmbps') or _param('up_mbps')
         down_str = _param('down') or _param('downmbps') or _param('down_mbps')
 
-        if is_private_host(host):
+        is_priv = is_private_host(host)
+        if is_priv:
             log.warning("Hysteria2 link points to private/reserved IP: %s", host)
 
         from .server_model import Server, ProxyProtocol
@@ -139,7 +143,7 @@ def _parse_hysteria2(raw_link, default_name="Server"):
             ports=ports,
             up_mbps=_parse_mbps(up_str),
             down_mbps=_parse_mbps(down_str),
-            is_private=is_private_host(host),
+            is_private=is_priv,
         )
     except (ValueError, IndexError) as e:
         log.debug("Hysteria2 link parse failed: %s", e)
@@ -165,10 +169,22 @@ def _parse_vless(raw_link, default_name="Server"):
         else:
             hostport, query_str = rest, ''
 
-        if ':' not in hostport:
+        # Parse host and port (support IPv6 [::1]:443 and hostname:port)
+        if hostport.startswith('[') and ']' in hostport:
+            host_part, _, port_part = hostport.partition(']')
+            host = host_part[1:]
+            if port_part.startswith(':'):
+                port = int(port_part[1:])
+            else:
+                return None
+        elif ':' in hostport:
+            host, port_str = hostport.rsplit(':', 1)
+            port = int(port_str)
+        else:
             return None
-        host, port_str = hostport.rsplit(':', 1)
-        port = int(port_str)
+
+        if not host:
+            return None
 
         params = parse_qs(query_str, keep_blank_values=True)
         def _param(key): return params.get(key, [''])[0]
@@ -184,7 +200,8 @@ def _parse_vless(raw_link, default_name="Server"):
         host_header = _param('host')
         path = _param('path') or _param('serviceName')
 
-        if is_private_host(host):
+        is_priv = is_private_host(host)
+        if is_priv:
             log.warning("VLESS link points to private/reserved IP: %s", host)
 
         from .server_model import Server, ProxyProtocol
@@ -205,7 +222,7 @@ def _parse_vless(raw_link, default_name="Server"):
             short_id=sid,
             path=path,
             host_header=host_header,
-            is_private=is_private_host(host),
+            is_private=is_priv,
         )
     except (ValueError, IndexError) as e:
         log.debug("VLESS link parse failed: %s", e)
@@ -233,7 +250,8 @@ def _parse_vmess(raw_link, default_name="Server"):
 
         security = 'tls' if tls == 'tls' else 'none'
 
-        if is_private_host(host):
+        is_priv = is_private_host(host)
+        if is_priv:
             log.warning("VMess link points to private/reserved IP: %s", host)
 
         from .server_model import Server, ProxyProtocol
@@ -253,7 +271,7 @@ def _parse_vmess(raw_link, default_name="Server"):
             vmess_security=vmess_sec,
             path=path,
             host_header=host_header,
-            is_private=is_private_host(host),
+            is_private=is_priv,
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         log.debug("VMess link parse failed: %s", e)

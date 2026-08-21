@@ -259,12 +259,12 @@ def parse_subscription(url, settings=None):
                     meta.update(json_meta)
                     return ss_links, meta
 
-            # Standard base64 format
+            # Standard base64 format (strip whitespace/newlines and handle urlsafe/unpadded base64)
             try:
-                decoded_content = base64.b64decode(
-                    raw_content + '=' * (-len(raw_content) % 4)
-                ).decode('utf-8')
-            except (binascii.Error, ValueError, UnicodeDecodeError) as e:
+                clean_b64 = re.sub(r'\s+', '', raw_content).replace('-', '+').replace('_', '/')
+                padded_b64 = clean_b64 + '=' * (-len(clean_b64) % 4)
+                decoded_content = base64.b64decode(padded_b64).decode('utf-8', errors='replace')
+            except Exception as e:
                 log.warning("Base64 decode failed, using raw content: %s", e)
                 decoded_content = raw_content
 
@@ -273,9 +273,9 @@ def parse_subscription(url, settings=None):
                 meta['description'] = _extract_description(
                     headers, decoded_lines, meta.get('announce', ''), meta)
 
-            supported_prefixes = ('ss://', 'vless://', 'vmess://', 'hysteria2://', 'hy2://')
+            supported_prefixes = ('ss://', 'vless://', 'vmess://', 'hysteria2://', 'hy2://', 'tws3://', 'tws2://')
             links = [
-                line for line in decoded_lines
+                line.strip() for line in decoded_lines
                 if line.strip().startswith(supported_prefixes)
             ]
 

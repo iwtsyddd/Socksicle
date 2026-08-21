@@ -418,8 +418,8 @@ class ParallelDownloadTest(InstallTestCase):
         call_count = [0]
 
         def fake_download_range(url, start, end, part_path, lock, state, progress_cb=None):
-            idx = call_count[0]
-            call_count[0] += 1
+            chunk_size = len(chunk_data[0])
+            idx = min(len(chunk_data) - 1, start // chunk_size)
             part_path.write_bytes(chunk_data[idx])
 
         p = mock.patch.object(ss_backend, "_download_range_worker",
@@ -436,11 +436,10 @@ class ParallelDownloadTest(InstallTestCase):
         chunk_data = [b"A" * 100, b"B" * 100, b"C" * 100, b"D" * 100]
         total = 400
         progress_calls = []
-        call_idx = [0]
 
         def fake_download_range(url, start, end, part_path, lock, state, progress_cb=None):
-            idx = call_idx[0]
-            call_idx[0] += 1
+            chunk_size = len(chunk_data[0])
+            idx = min(len(chunk_data) - 1, start // chunk_size)
             part_path.write_bytes(chunk_data[idx])
             if progress_cb:
                 with lock:

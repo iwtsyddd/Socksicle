@@ -108,6 +108,42 @@ class SingBoxVlessConfigTest(unittest.TestCase):
         self.assertEqual(tr["type"], "grpc")
         self.assertEqual(tr["service_name"], "my-service")
 
+    def test_vless_outbound_default_fingerprint(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.VLESS,
+            host="1.2.3.4", port=443,
+            uuid="uuid-fp", flow="", security="tls",
+            transport="tcp", server_name="tls.example.com",
+            fingerprint="",
+        )
+        ob = _build_singbox_vless_outbound(server)
+        self.assertIn("tls", ob)
+        self.assertTrue(ob["tls"]["enabled"])
+        self.assertEqual(ob["tls"]["server_name"], "tls.example.com")
+        self.assertEqual(ob["tls"]["utls"]["fingerprint"], "chrome")
+        self.assertNotIn("insecure", ob["tls"])
+
+    def test_vless_outbound_insecure(self):
+        server_allow = _FakeServer(
+            protocol=ProxyProtocol.VLESS,
+            host="1.2.3.4", port=443,
+            uuid="uuid-ins", flow="", security="tls",
+            transport="tcp", server_name="tls.example.com",
+            allow_insecure=True,
+        )
+        ob = _build_singbox_vless_outbound(server_allow)
+        self.assertTrue(ob["tls"]["insecure"])
+
+        server_insecure = _FakeServer(
+            protocol=ProxyProtocol.VLESS,
+            host="1.2.3.4", port=443,
+            uuid="uuid-ins2", flow="", security="tls",
+            transport="tcp", server_name="tls.example.com",
+            insecure=True,
+        )
+        ob2 = _build_singbox_vless_outbound(server_insecure)
+        self.assertTrue(ob2["tls"]["insecure"])
+
     def test_vless_full_config(self):
         server = _FakeServer(
             protocol=ProxyProtocol.VLESS,
@@ -142,12 +178,30 @@ class SingBoxVlessConfigTest(unittest.TestCase):
         )
         config = _generate_config(server, 1080)
         rules = config["route"]["rules"]
-        self.assertEqual(len(rules), 2)
+        self.assertEqual(len(rules), 4)
         self.assertEqual(rules[0], {"protocol": "dns", "outbound": "direct"})
-        self.assertEqual(rules[1], {"ip_is_private": True, "outbound": "direct"})
+        self.assertEqual(rules[1], {"port": 123, "outbound": "direct"})
+        self.assertEqual(rules[2], {"ip_cidr": ["1.2.3.4/32"], "outbound": "direct"})
+        self.assertEqual(rules[3], {"ip_is_private": True, "outbound": "direct"})
         for rule in rules:
-            self.assertNotIn("ip_cidr", rule)
             self.assertNotIn("geoip", json.dumps(rule))
+
+    def test_route_rules_domain_host_direct(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.VLESS,
+            host="vless.example.com", port=443,
+            uuid="uuid-route", flow="", security="none",
+            transport="tcp", server_name="", fingerprint="",
+            public_key="", short_id="", path="", host_header="",
+            method="", password="",
+        )
+        config = _generate_config(server, 1080)
+        rules = config["route"]["rules"]
+        self.assertEqual(len(rules), 4)
+        self.assertEqual(rules[0], {"protocol": "dns", "outbound": "direct"})
+        self.assertEqual(rules[1], {"port": 123, "outbound": "direct"})
+        self.assertEqual(rules[2], {"domain": ["vless.example.com"], "outbound": "direct"})
+        self.assertEqual(rules[3], {"ip_is_private": True, "outbound": "direct"})
 
 
 class SingBoxVmessConfigTest(unittest.TestCase):
@@ -205,6 +259,45 @@ class SingBoxVmessConfigTest(unittest.TestCase):
         self.assertEqual(ob["transport"]["type"], "grpc")
         self.assertEqual(ob["transport"]["service_name"], "grpc-svc")
 
+    def test_vmess_outbound_default_fingerprint(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.VMESS,
+            host="vm.host", port=443,
+            uuid="vm-uuid-fp", alter_id=0,
+            vmess_security="auto", security="tls",
+            transport="tcp", server_name="vm.sni",
+            fingerprint="",
+        )
+        ob = _build_singbox_vmess_outbound(server)
+        self.assertIn("tls", ob)
+        self.assertTrue(ob["tls"]["enabled"])
+        self.assertEqual(ob["tls"]["server_name"], "vm.sni")
+        self.assertEqual(ob["tls"]["utls"]["fingerprint"], "chrome")
+        self.assertNotIn("insecure", ob["tls"])
+
+    def test_vmess_outbound_insecure(self):
+        server_allow = _FakeServer(
+            protocol=ProxyProtocol.VMESS,
+            host="vm.host", port=443,
+            uuid="vm-uuid-ins", alter_id=0,
+            vmess_security="auto", security="tls",
+            transport="tcp", server_name="vm.sni",
+            allow_insecure=True,
+        )
+        ob = _build_singbox_vmess_outbound(server_allow)
+        self.assertTrue(ob["tls"]["insecure"])
+
+        server_insecure = _FakeServer(
+            protocol=ProxyProtocol.VMESS,
+            host="vm.host", port=443,
+            uuid="vm-uuid-ins2", alter_id=0,
+            vmess_security="auto", security="tls",
+            transport="tcp", server_name="vm.sni",
+            insecure=True,
+        )
+        ob2 = _build_singbox_vmess_outbound(server_insecure)
+        self.assertTrue(ob2["tls"]["insecure"])
+
     def test_vmess_full_config(self):
         server = _FakeServer(
             protocol=ProxyProtocol.VMESS,
@@ -234,7 +327,7 @@ class SingBoxVmessConfigTest(unittest.TestCase):
             method="", password="",
         )
         config = _generate_config(server, 1080)
-        rule = config["route"]["rules"][1]
+        rule = [r for r in config["route"]["rules"] if r.get("ip_is_private")][0]
         self.assertIn("ip_is_private", rule)
         self.assertEqual(rule["ip_is_private"], True)
         self.assertNotIn("ip_cidr", rule)
@@ -317,7 +410,7 @@ class SingBoxSSConfigTest(unittest.TestCase):
         server = SimpleNamespace(host="1.2.3.4", port=8388,
                                  method="aes-256-gcm", password="secret")
         config = _generate_config(server, 1080)
-        rule = config["route"]["rules"][1]
+        rule = [r for r in config["route"]["rules"] if r.get("ip_is_private")][0]
         self.assertIn("ip_is_private", rule)
         self.assertEqual(rule["ip_is_private"], True)
         self.assertNotIn("ip_cidr", rule)
@@ -349,8 +442,15 @@ class SingBoxTransportTest(unittest.TestCase):
         self.assertEqual(tr["path"], "/ws")
         self.assertEqual(tr["headers"]["Host"], "cdn.com")
 
+    def test_ws_fallback_to_server_name(self):
+        server = _FakeServer(transport="ws", path="/ws", host_header="", server_name="sni.example.com")
+        tr = _build_singbox_transport(server)
+        self.assertEqual(tr["type"], "ws")
+        self.assertEqual(tr["path"], "/ws")
+        self.assertEqual(tr["headers"]["Host"], "sni.example.com")
+
     def test_ws_without_host(self):
-        server = _FakeServer(transport="ws", path="/ws", host_header="")
+        server = _FakeServer(transport="ws", path="/ws", host_header="", server_name="")
         tr = _build_singbox_transport(server)
         self.assertEqual(tr["type"], "ws")
         self.assertEqual(tr["path"], "/ws")
@@ -381,15 +481,18 @@ class SingBoxTunConfigTest(unittest.TestCase):
         self.assertIn("dns", config)
         self.assertEqual(config["dns"]["servers"][0]["type"], "https")
         self.assertEqual(config["dns"]["servers"][0]["server"], "1.1.1.1")
-        self.assertEqual(config["dns"]["servers"][1]["type"], "local")
+        self.assertEqual(config["dns"]["servers"][1]["server"], "8.8.8.8")
+        self.assertEqual(config["dns"]["servers"][2]["type"], "local")
         self.assertEqual(len(config["inbounds"]), 2)
         tun_in = config["inbounds"][0]
         self.assertEqual(tun_in["type"], "tun")
         self.assertTrue(tun_in["interface_name"].startswith("socksicle-"))
-        self.assertEqual(tun_in["address"], ["172.19.0.1/30"])
+        self.assertEqual(tun_in["address"], ["172.19.0.1/30", "fdfe:dcba:9876::1/126"])
         self.assertTrue(tun_in["auto_route"])
-        self.assertFalse(tun_in["strict_route"])
-        self.assertEqual(tun_in["stack"], "system")
+        self.assertTrue(tun_in["strict_route"])
+        self.assertEqual(tun_in["route_address"], ["0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"])
+        self.assertEqual(tun_in["route_exclude_address"], ["1.2.3.4/32"])
+        self.assertEqual(tun_in["stack"], "mixed")
         mixed_in = config["inbounds"][1]
         self.assertEqual(mixed_in["type"], "mixed")
         self.assertEqual(mixed_in["listen_port"], 1080)
@@ -397,6 +500,41 @@ class SingBoxTunConfigTest(unittest.TestCase):
         self.assertEqual(config["route"]["rules"][0]["action"], "sniff")
         self.assertEqual(config["route"]["rules"][1]["protocol"], "dns")
         self.assertEqual(config["route"]["rules"][1]["action"], "hijack-dns")
+        self.assertEqual(config["route"]["rules"][2]["port"], 123)
+        self.assertEqual(config["route"]["rules"][3]["ip_cidr"], ["1.2.3.4/32"])
+        self.assertEqual(config["route"]["rules"][4]["ip_is_private"], True)
+        self.assertEqual(config["outbounds"][0]["domain_resolver"], "local-dns")
+        self.assertEqual(config["outbounds"][1]["domain_resolver"], "local-dns")
+
+    def test_tun_mode_domain_host_exclusion(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.VLESS,
+            host="vpn.example.com", port=443,
+            uuid="11111111-1111-1111-1111-111111111111",
+            security="reality", public_key="pbk", short_id="sid",
+        )
+        config = _generate_config(server, 1080, tun_mode=True)
+        tun_in = config["inbounds"][0]
+        self.assertTrue(tun_in["strict_route"])
+        self.assertEqual(tun_in["route_address"], ["0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"])
+        self.assertNotIn("route_exclude_address", tun_in)
+        # Server domain is routed direct in route rules
+        domain_rule = next(r for r in config["route"]["rules"] if "domain" in r)
+        self.assertEqual(domain_rule["domain"], ["vpn.example.com"])
+        self.assertEqual(domain_rule["outbound"], "direct")
+
+    def test_tun_mode_ipv6_host_exclusion(self):
+        server = _FakeServer(
+            protocol=ProxyProtocol.SHADOWSOCKS,
+            host="2001:db8::1", port=8388,
+            method="aes-256-gcm", password="secret",
+        )
+        config = _generate_config(server, 1080, tun_mode=True)
+        tun_in = config["inbounds"][0]
+        self.assertEqual(tun_in["route_exclude_address"], ["2001:db8::1/128"])
+        ip_rule = next(r for r in config["route"]["rules"] if "ip_cidr" in r)
+        self.assertEqual(ip_rule["ip_cidr"], ["2001:db8::1/128"])
+        self.assertEqual(ip_rule["outbound"], "direct")
 
     def test_singbox_engine_process_name_with_tun(self):
         engine = SingBoxEngine()
@@ -412,23 +550,24 @@ class SingBoxTunConfigTest(unittest.TestCase):
             return
         import subprocess
         for proto in (ProxyProtocol.SHADOWSOCKS, ProxyProtocol.VLESS, ProxyProtocol.VMESS, ProxyProtocol.HYSTERIA2):
-            for tun in (False, True):
-                srv = _FakeServer(
-                    protocol=proto, host="1.2.3.4", port=443,
-                    password="pass", method="aes-256-gcm", uuid="11111111-1111-1111-1111-111111111111",
-                    flow="", security="none", transport="tcp", server_name="", fingerprint="",
-                    public_key="", short_id="", path="", host_header=""
-                )
-                cfg = _generate_config(srv, 1080, tun_mode=tun)
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-                    json.dump(cfg, f)
-                    temp_name = f.name
-                try:
-                    res = subprocess.run([str(binary), "check", "-c", temp_name], capture_output=True, text=True)
-                    self.assertEqual(res.returncode, 0, f"sing-box check failed for {proto} tun={tun}: {res.stderr}")
-                finally:
-                    if os.path.exists(temp_name):
-                        os.remove(temp_name)
+            for host in ("1.2.3.4", "vpn.example.com", "2001:db8::1"):
+                for tun in (False, True):
+                    srv = _FakeServer(
+                        protocol=proto, host=host, port=443,
+                        password="pass", method="aes-256-gcm", uuid="11111111-1111-1111-1111-111111111111",
+                        flow="", security="none", transport="tcp", server_name="", fingerprint="",
+                        public_key="", short_id="", path="", host_header=""
+                    )
+                    cfg = _generate_config(srv, 1080, tun_mode=tun)
+                    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                        json.dump(cfg, f)
+                        temp_name = f.name
+                    try:
+                        res = subprocess.run([str(binary), "check", "-c", temp_name], capture_output=True, text=True)
+                        self.assertEqual(res.returncode, 0, f"sing-box check failed for {proto} host={host} tun={tun}: {res.stderr}")
+                    finally:
+                        if os.path.exists(temp_name):
+                            os.remove(temp_name)
 
 
 if __name__ == "__main__":

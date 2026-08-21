@@ -3,164 +3,622 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TwinSock URL Encoder</title>
+<title>TwinSock v3 URL Studio</title>
+<meta name="description" content="Client-side zero-knowledge AES-256-GCM AEAD URL encryptor for Shadowsocks, VLESS, VMess, Hysteria 2 and subscription feeds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
   :root {
-    --bg: #0f0d1a;
-    --surface: #1c1930;
-    --surface-variant: #262240;
-    --primary: #bb86fc;
-    --on-surface: #e8e6f5;
-    --on-surface-variant: #a29ac0;
-    --error: #ff7b7b;
-    --ok: #7ee0a3;
-    --border: #332e52;
+    --bg: #0d0e14;
+    --surface: #151720;
+    --surface-elevated: #1c1e2b;
+    --surface-input: #10121a;
+    --border: #262938;
+    --border-hover: #3d4257;
+    --border-focus: #8b5cf6;
+    
+    --primary: #8b5cf6;
+    --primary-hover: #7c3aed;
+    --primary-light: rgba(139, 92, 246, 0.12);
+    
+    --text: #f1f3f9;
+    --text-muted: #8e95a5;
+    --text-dim: #5a6173;
+    
+    --success: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.1);
+    --error: #ef4444;
+    --error-bg: rgba(239, 68, 68, 0.1);
+    
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
   body {
-    background: var(--bg);
-    color: var(--on-surface);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
     display: flex;
-    justify-content: center;
-    padding: 32px 16px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 48px 20px 80px;
+    line-height: 1.5;
   }
+
+  .container {
+    width: 100%;
+    max-width: 780px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* Header */
+  .header {
+    text-align: left;
+    margin-bottom: 4px;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .header-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--primary-light);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+  .header-icon svg { width: 18px; height: 18px; fill: currentColor; }
+
+  .title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    color: var(--text);
+  }
+
+  .version-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    color: var(--primary);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .subtitle {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  /* Cards */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 28px;
-    width: 100%;
-    max-width: 760px;
-    align-self: flex-start;
+    border-radius: var(--radius-lg);
+    padding: 22px 24px;
+    box-shadow: var(--shadow-sm);
   }
-  h1 {
-    margin: 0 0 4px 0;
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-  }
-  .subtitle {
-    margin: 0 0 24px 0;
-    color: var(--on-surface-variant);
-    font-size: 13px;
-  }
-  .field { margin-bottom: 20px; }
-  .label {
-    display: block;
+
+  .card-title {
     font-size: 13px;
     font-weight: 600;
-    color: var(--on-surface);
-    margin-bottom: 8px;
+    color: var(--text);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
-  input[type="text"], textarea {
+
+  .card-title-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-title-left svg {
+    width: 15px;
+    height: 15px;
+    fill: var(--text-muted);
+  }
+
+  /* Settings Grid */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 640px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  /* Form Elements */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .input-text, .input-select {
     width: 100%;
-    background: var(--surface-variant);
-    color: var(--on-surface);
+    background: var(--surface-input);
+    color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .input-text:focus, .input-select:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+  }
+
+  .input-text:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgba(16, 18, 26, 0.5);
+  }
+
+  .input-select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238e95a5'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 36px;
+  }
+
+  .hint {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  /* Segmented Mode Switcher */
+  .segmented-switch {
+    display: flex;
+    background: var(--surface-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .seg-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+
+  .seg-btn svg { width: 13px; height: 13px; fill: currentColor; }
+
+  .seg-btn:hover { color: var(--text); }
+
+  .seg-btn.active {
+    background: var(--surface-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Checkbox & Options */
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s ease;
+  }
+  .checkbox-row:hover { border-color: var(--border-hover); }
+
+  .checkbox-row input[type="checkbox"] {
+    accent-color: var(--primary);
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+  }
+
+  .checkbox-label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .checkbox-title { font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .checkbox-desc { font-size: 11px; color: var(--text-dim); }
+
+  /* Input Dropzone & Textareas */
+  .textarea-box {
+    width: 100%;
+    min-height: 120px;
+    background: var(--surface-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     padding: 12px 14px;
-    font-size: 14px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
     outline: none;
     resize: vertical;
+    transition: border-color 0.15s ease;
   }
-  input[type="text"]:focus, textarea:focus {
-    border-color: var(--primary);
+  .textarea-box:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
   }
-  textarea { min-height: 110px; line-height: 1.45; }
-  textarea#input { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; }
-  textarea#output {
-    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-    font-size: 13px;
-    min-height: 130px;
+  .textarea-box::placeholder {
+    color: var(--text-dim);
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
   }
-  .row { display: flex; gap: 10px; }
-  .row input { flex: 1; }
-  .row textarea { flex: 1; }
-  .btn {
-    border: none;
-    border-radius: 10px;
-    padding: 12px 20px;
-    font-size: 14px;
+
+  /* Protocol detection pills */
+  .protocol-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    min-height: 24px;
+  }
+
+  .proto-badge {
+    font-size: 11px;
     font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: filter 0.15s ease;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    color: var(--primary);
   }
-  .btn:hover { filter: brightness(1.1); }
-  .btn:disabled { opacity: 0.55; cursor: default; }
+  .proto-badge.sub { color: #38bdf8; }
+
+  /* Action Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+  }
+  .btn svg { width: 14px; height: 14px; fill: currentColor; }
+
   .btn-primary {
     background: var(--primary);
-    color: #1a1230;
-    min-width: 130px;
+    color: #ffffff;
+    padding: 11px 20px;
+    font-size: 13.5px;
   }
-  .btn-outline {
+  .btn-primary:hover {
+    background: var(--primary-hover);
+  }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover {
+    border-color: var(--border-hover);
+    background: #232736;
+  }
+
+  .btn-ghost {
     background: transparent;
-    color: var(--primary);
-    border: 1px solid var(--primary);
-  }
-  .actions { display: flex; gap: 10px; margin: 4px 0 20px 0; }
-  .hint {
-    margin-top: 6px;
+    color: var(--text-muted);
+    padding: 4px 8px;
     font-size: 12px;
-    color: var(--on-surface-variant);
   }
-  .status { margin-top: 12px; font-size: 13px; min-height: 18px; }
-  .status.error { color: var(--error); }
-  .status.ok { color: var(--ok); }
-  .status.info { color: var(--on-surface-variant); }
+  .btn-ghost:hover { color: var(--text); }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .hotkey-hint {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .kbd {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10.5px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+  }
+
+  /* Status Banner */
+  .status-banner {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    margin-top: 12px;
+  }
+  .status-banner.success {
+    display: flex;
+    background: var(--success-bg);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: var(--success);
+  }
+  .status-banner.error {
+    display: flex;
+    background: var(--error-bg);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: var(--error);
+  }
+  .status-banner svg { width: 15px; height: 15px; flex-shrink: 0; fill: currentColor; }
+
+  /* Toast Notification */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-hover);
+    color: var(--text);
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+    z-index: 200;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>TwinSock URL Encoder</h1>
-    <p class="subtitle">Encrypt ss://, vless://, vmess://, hysteria2:// links and subscription URLs into shareable tws2:// links.</p>
 
-    <div class="field">
-      <label class="label" for="key">Share key</label>
-      <div class="row">
-        <input type="text" id="key" spellcheck="false"
-               placeholder="Paste your TwinSock share key (base64url, 32 bytes)...">
-        <button class="btn btn-outline" id="genKey" type="button">Generate key</button>
+  <div class="container">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="header-icon">
+          <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        </div>
+        <h1 class="title">TwinSock v3 URL Studio</h1>
+        <span class="version-tag">AES-256-GCM AEAD</span>
       </div>
-      <div class="hint">The key encodes and decodes tws2:// links. Share it with the people you share links with.</div>
+      <p class="subtitle">
+        Zero-knowledge client-side encryption for Shadowsocks, VLESS, VMess, Hysteria 2 and subscription URLs into shareable <code>tws3://</code> tokens.
+      </p>
+    </header>
+
+    <!-- Configuration Card -->
+    <section class="card">
+      <div class="card-title">
+        <div class="card-title-left">
+          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          Encryption Parameters
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Left: Key Binding -->
+        <div class="field">
+          <label class="field-label">Share Key Binding</label>
+          <div class="segmented-switch">
+            <button class="seg-btn active" id="tab-public" type="button">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              Public Link
+            </button>
+            <button class="seg-btn" id="tab-personal" type="button">
+              <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+              Personal Key
+            </button>
+          </div>
+          <input type="text" class="input-text" id="key-input" spellcheck="false" disabled
+                 placeholder="Using public key (abcdfg)...">
+          <div class="hint" id="key-hint">
+            Public links automatically decrypt in all Socksicle installations without extra keys.
+          </div>
+        </div>
+
+        <!-- Right: Expiration, Bundling & Protection -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div class="field">
+            <label class="field-label" for="expiration-select">Expiration Window</label>
+            <select class="input-select" id="expiration-select">
+              <option value="none">Lifetime (No Expiration)</option>
+              <option value="1d">24 Hours (1 Day)</option>
+              <option value="7d">7 Days</option>
+              <option value="30d">30 Days</option>
+              <option value="90d">90 Days</option>
+              <option value="custom">Custom Date & Time...</option>
+            </select>
+            <div id="custom-date-box" style="display: none; margin-top: 6px;">
+              <input type="datetime-local" class="input-text" id="custom-date-input">
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="bundle-check" checked>
+            <div class="checkbox-label">
+              <span class="checkbox-title">Bundle multiple servers into 1 link</span>
+              <span class="checkbox-desc">Package all lines into a single combined tws3:// share token</span>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="lock-export-check">
+            <div class="checkbox-label">
+              <span class="checkbox-title">Lock Configuration Export</span>
+              <span class="checkbox-desc">Prevents recipients from copying or exporting raw credentials</span>
+            </div>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Input Card -->
+    <section class="card">
+      <div class="card-title">
+        <div class="card-title-left">
+          <svg viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+          Input Proxies or Subscriptions
+        </div>
+        <div style="display: flex; gap: 4px;">
+          <button class="btn btn-ghost" id="btn-paste" type="button">Paste</button>
+          <button class="btn btn-ghost" id="btn-clear" type="button">Clear</button>
+        </div>
+      </div>
+
+      <textarea class="textarea-box" id="input-area" spellcheck="false"
+        placeholder="Paste one or multiple node links or subscription URLs (one per line):&#10;ss://...&#10;vless://...&#10;vmess://...&#10;hysteria2://...&#10;https://example.com/api/v1/client/subscribe..."></textarea>
+
+      <div class="protocol-bar" id="protocol-bar">
+        <span style="font-size: 11.5px; color: var(--text-dim);">No links detected</span>
+      </div>
+    </section>
+
+    <!-- Action Row -->
+    <div class="action-row">
+      <button class="btn btn-primary" id="btn-encode" type="button">
+        <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+        <span>Encrypt to tws3://</span>
+      </button>
+      <div class="hotkey-hint">
+        <span class="kbd">Ctrl</span> + <span class="kbd">Enter</span>
+      </div>
     </div>
 
-    <div class="field">
-      <label class="label" for="input">Link or subscription URL</label>
-      <textarea id="input" spellcheck="false"
-        placeholder="One link per line: ss://, vless://, vmess://, hysteria2:// or an http(s):// subscription URL"></textarea>
-    </div>
+    <!-- Output Card -->
+    <section class="card" id="output-card" style="display: none;">
+      <div class="card-title">
+        <div class="card-title-left">
+          <svg viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+          Encrypted tws3:// Output
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" id="btn-copy-all" type="button">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy All
+          </button>
+        </div>
+      </div>
 
-    <div class="actions">
-      <button class="btn btn-primary" id="encode" type="button">Encode</button>
-      <button class="btn btn-outline" id="copy" type="button">Copy all</button>
-    </div>
+      <textarea class="textarea-box" id="output-area" readonly spellcheck="false"
+        placeholder="Encrypted tws3:// links will appear here..."></textarea>
 
-    <div class="field">
-      <label class="label" for="output">Encoded tws2:// links</label>
-      <textarea id="output" readonly spellcheck="false"
-        placeholder="Encoded tws2:// links will appear here"></textarea>
-    </div>
+      <div class="status-banner" id="status-banner">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        <span id="status-text">All links encrypted successfully.</span>
+      </div>
+    </section>
 
-    <div class="status info" id="status"></div>
+  </div>
+
+  <!-- Floating Toast -->
+  <div id="toast">
+    <span id="toast-text"></span>
   </div>
 
 <script>
 "use strict";
 
-/* ---------- base64url (no padding) ---------- */
+/* ==========================================================================
+   TwinSock v3 WebCrypto Cryptography (AES-256-GCM + HKDF-SHA256)
+   ========================================================================== */
+const DEFAULT_SHARE_KEY = "abcdfg";
 const B64URL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+const SALT_SHARE_V3 = new Uint8Array([
+  0xf0, 0xe0, 0x80, 0xed, 0x73, 0x11, 0x3c, 0xed,
+  0x2c, 0x4f, 0xfb, 0x80, 0xf2, 0xc1, 0x2d, 0x52,
+  0xd7, 0x45, 0xed, 0xe5, 0x70, 0x87, 0x1d, 0x81,
+  0x42, 0x5c, 0x8a, 0x1d, 0xc4, 0x39, 0x04, 0x3c
+]);
+const INFO_SHARE_V3 = new TextEncoder().encode("twinsock-v3-share");
 
 function b64urlEncode(bytes) {
   let out = "";
   for (let i = 0; i < bytes.length; i += 3) {
     const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2];
     out += B64URL_CHARS[b0 >> 2];
-    out += B64URL_CHARS[((b0 & 3) << 4) | (b1 !== undefined ? b1 : 0) >> 4];
-    out += b1 !== undefined ? B64URL_CHARS[((b1 & 15) << 2) | (b2 !== undefined ? b2 : 0) >> 6] : "";
+    out += B64URL_CHARS[((b0 & 3) << 4) | ((b1 !== undefined ? b1 : 0) >> 4)];
+    out += b1 !== undefined ? B64URL_CHARS[((b1 & 15) << 2) | ((b2 !== undefined ? b2 : 0) >> 6)] : "";
     out += b2 !== undefined ? B64URL_CHARS[b2 & 63] : "";
   }
   return out;
@@ -169,7 +627,7 @@ function b64urlEncode(bytes) {
 function b64urlDecode(str) {
   str = str.trim();
   if (!/^[A-Za-z0-9\-_]*$/.test(str) || str.length % 4 === 1) {
-    throw new Error("invalid base64url");
+    throw new Error("Invalid base64url string");
   }
   const bin = atob(str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (str.length % 4)) % 4));
   const bytes = new Uint8Array(bin.length);
@@ -177,195 +635,7 @@ function b64urlDecode(str) {
   return bytes;
 }
 
-/* ---------- SHA3-256 (Keccak, rate 136) ---------- */
-const MASK64 = 0xffffffffffffffffn;
-
-function rotl64(x, n) {
-  return ((x << BigInt(n)) | (x >> BigInt(64 - n))) & MASK64;
-}
-
-const KECCAK_RC = [
-  0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
-  0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
-  0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
-  0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
-  0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
-  0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n,
-];
-
-const KECCAK_ROT = [
-  0, 1, 62, 28, 27,
-  36, 44, 6, 55, 20,
-  3, 10, 43, 25, 39,
-  41, 45, 15, 21, 8,
-  18, 2, 61, 56, 14,
-];
-
-function keccakF1600(S) {
-  const C = new Array(5), D = new Array(5), B = new Array(25);
-  for (let round = 0; round < 24; round++) {
-    for (let x = 0; x < 5; x++) {
-      C[x] = S[x] ^ S[x + 5] ^ S[x + 10] ^ S[x + 15] ^ S[x + 20];
-    }
-    for (let x = 0; x < 5; x++) {
-      D[x] = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
-      for (let y = 0; y <= 20; y += 5) S[x + y] ^= D[x];
-    }
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 5; y++) {
-        B[y + 5 * ((2 * x + 3 * y) % 5)] = rotl64(S[x + 5 * y], KECCAK_ROT[x + 5 * y]);
-      }
-    }
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 5; y++) {
-        S[x + 5 * y] = B[x + 5 * y] ^ ((~B[(x + 1) % 5 + 5 * y]) & B[(x + 2) % 5 + 5 * y]);
-      }
-    }
-    S[0] ^= KECCAK_RC[round];
-  }
-}
-
-function sha3_256(input) {
-  const RATE = 136;
-  const S = new Array(25).fill(0n);
-  const nBlocks = Math.floor(input.length / RATE) + 1;
-  const padded = new Uint8Array(RATE * nBlocks);
-  padded.set(input, 0);
-  padded[input.length] ^= 0x06;
-  padded[padded.length - 1] ^= 0x80;
-  for (let b = 0; b < nBlocks; b++) {
-    for (let i = 0; i < RATE; i++) {
-      S[(i / 8) | 0] ^= BigInt(padded[b * RATE + i]) << BigInt(8 * (i % 8));
-    }
-    keccakF1600(S);
-  }
-  const out = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    out[i] = Number((S[(i / 8) | 0] >> BigInt(8 * (i % 8))) & 0xffn);
-  }
-  return out;
-}
-
-/* ---------- BLAKE2b-512 (digest_size = 64, optional key) ---------- */
-const B2B_IV = [
-  0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
-  0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n,
-];
-
-const B2B_SIGMA = [
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-  [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
-  [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
-  [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
-  [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
-  [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
-  [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
-  [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
-  [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
-  [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-  [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
-];
-
-function blake2b512(input, key) {
-  const keyLen = key && key.length ? key.length : 0;
-  const h = B2B_IV.slice();
-  h[0] ^= BigInt(0x01010000 ^ (keyLen << 8) ^ 64);
-
-  const compress = (block, isFinal) => {
-    const m = new Array(16);
-    for (let i = 0; i < 16; i++) {
-      let v = 0n;
-      for (let j = 7; j >= 0; j--) v = (v << 8n) | BigInt(block[i * 8 + j]);
-      m[i] = v;
-    }
-    const v = new Array(16);
-    for (let i = 0; i < 8; i++) {
-      v[i] = h[i];
-      v[i + 8] = B2B_IV[i];
-    }
-    v[12] ^= total;
-    if (isFinal) {
-      v[14] = ~v[14] & MASK64;
-    }
-    const G = (a, b, c, d, x, y) => {
-      v[a] = (v[a] + v[b] + x) & MASK64;
-      v[d] = rotl64(v[d] ^ v[a], 32);
-      v[c] = (v[c] + v[d]) & MASK64;
-      v[b] = rotl64(v[b] ^ v[c], 40);
-      v[a] = (v[a] + v[b] + y) & MASK64;
-      v[d] = rotl64(v[d] ^ v[a], 48);
-      v[c] = (v[c] + v[d]) & MASK64;
-      v[b] = rotl64(v[b] ^ v[c], 1);
-    };
-    for (let r = 0; r < 12; r++) {
-      const s = B2B_SIGMA[r];
-      G(0, 4, 8, 12, m[s[0]], m[s[1]]);
-      G(1, 5, 9, 13, m[s[2]], m[s[3]]);
-      G(2, 6, 10, 14, m[s[4]], m[s[5]]);
-      G(3, 7, 11, 15, m[s[6]], m[s[7]]);
-      G(0, 5, 10, 15, m[s[8]], m[s[9]]);
-      G(1, 6, 11, 12, m[s[10]], m[s[11]]);
-      G(2, 7, 8, 13, m[s[12]], m[s[13]]);
-      G(3, 4, 9, 14, m[s[14]], m[s[15]]);
-    }
-    for (let i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
-  };
-
-  let total = 0n;
-  let lastFinal = false;
-
-  if (keyLen > 0) {
-    const kb = new Uint8Array(128);
-    kb.set(key, 0);
-    total += 128n;
-    lastFinal = input.length === 0;
-    compress(kb, lastFinal);
-  }
-
-  let off = 0;
-  while (off < input.length) {
-    if (input.length - off >= 128) {
-      total += 128n;
-      compress(input.subarray(off, off + 128), false);
-      lastFinal = false;
-      off += 128;
-    } else {
-      const last = new Uint8Array(128);
-      last.set(input.subarray(off), 0);
-      total += BigInt(input.length - off);
-      compress(last, true);
-      lastFinal = true;
-      off = input.length;
-    }
-  }
-  if (!lastFinal) {
-    compress(new Uint8Array(128), true);
-  }
-
-  const out = new Uint8Array(64);
-  for (let i = 0; i < 8; i++) {
-    for (let j = 0; j < 8; j++) {
-      out[i * 8 + j] = Number((h[i] >> BigInt(8 * j)) & 0xffn);
-    }
-  }
-  return out;
-}
-
-/* ---------- HMAC-SHA-256 via WebCrypto ---------- */
-async function hmacSha256(keyBytes, msgBytes) {
-  const subtle = globalThis.crypto && globalThis.crypto.subtle;
-  if (!subtle) throw new Error("WebCrypto is not available in this browser");
-  const k = await subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await subtle.sign("HMAC", k, msgBytes));
-}
-
-/* ---------- TwinSock share-link encryption ---------- */
-const C_BYTES = new TextEncoder().encode("socksicle::tws::v2");
-const PURPOSE_BYTES = new TextEncoder().encode("::purpose::share");
-const TAG_PREFIX = new TextEncoder().encode("tws-tag");
-
-function shareKeyToD(shareKey) {
+function shareKeyToBytes(shareKey) {
   try {
     return b64urlDecode(shareKey);
   } catch (e) {
@@ -373,156 +643,276 @@ function shareKeyToD(shareKey) {
   }
 }
 
-async function deriveShareKey(shareKey) {
-  const d = shareKeyToD(shareKey);
-  const c = new Uint8Array(C_BYTES.length + PURPOSE_BYTES.length);
-  c.set(C_BYTES, 0);
-  c.set(PURPOSE_BYTES, C_BYTES.length);
-  return sha3_256(await hmacSha256(d, c));
-}
-
-function xorBytes(a, b) {
-  const out = new Uint8Array(Math.min(a.length, b.length));
-  for (let i = 0; i < out.length; i++) out[i] = a[i] ^ b[i];
-  return out;
-}
-
-async function blake2bStreamBytes(k, nonce, n) {
-  const stream = new Uint8Array(n);
-  const data = new Uint8Array(20);
-  data.set(nonce, 0);
-  const dv = new DataView(data.buffer);
-  let ctr = 0;
-  for (let i = 0; i < n; i += 64) {
-    dv.setUint32(16, ctr, true);
-    const block = blake2b512(data, k);
-    stream.set(block.subarray(0, Math.min(64, n - i)), i);
-    ctr++;
+async function deriveShareKeyV3(shareKey) {
+  if (!globalThis.crypto || !globalThis.crypto.subtle) {
+    throw new Error("WebCrypto is unavailable. Run this page via HTTPS or localhost.");
   }
-  return stream;
+  const d = shareKeyToBytes(shareKey);
+  const baseKey = await crypto.subtle.importKey("raw", d, "HKDF", false, ["deriveBits", "deriveKey"]);
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: SALT_SHARE_V3,
+      info: INFO_SHARE_V3
+    },
+    baseKey,
+    256
+  );
+  return await crypto.subtle.importKey("raw", derivedBits, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
-async function encodeLink(shareKey, plaintext) {
-  const k = await deriveShareKey(shareKey);
-  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const pt = new TextEncoder().encode(plaintext);
-  const ct = xorBytes(pt, await blake2bStreamBytes(k, nonce, pt.length));
+async function encodeLink(shareKey, targetInput, lockExport = false, expiresAt = null) {
+  const aesKey = await deriveShareKeyV3(shareKey);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
 
-  const tagMsg = new Uint8Array(TAG_PREFIX.length + 1 + nonce.length + ct.length);
-  tagMsg.set(TAG_PREFIX, 0);
-  tagMsg[TAG_PREFIX.length] = 0x02;
-  tagMsg.set(nonce, TAG_PREFIX.length + 1);
-  tagMsg.set(ct, TAG_PREFIX.length + 1 + nonce.length);
-  const tag = await hmacSha256(k, tagMsg);
+  let ptString;
+  if (Array.isArray(targetInput)) {
+    ptString = JSON.stringify({
+      targets: targetInput,
+      lock_export: Boolean(lockExport),
+      expires_at: expiresAt
+    });
+  } else if (lockExport || expiresAt !== null) {
+    ptString = JSON.stringify({
+      target: targetInput,
+      lock_export: Boolean(lockExport),
+      expires_at: expiresAt
+    });
+  } else {
+    ptString = String(targetInput);
+  }
 
-  const token = new Uint8Array(1 + nonce.length + tag.length + ct.length);
-  token[0] = 0x02;
-  token.set(nonce, 1);
-  token.set(tag, 1 + nonce.length);
-  token.set(ct, 1 + nonce.length + tag.length);
+  const pt = new TextEncoder().encode(ptString);
+  const ctBuffer = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aesKey, pt);
+  const ctBytes = new Uint8Array(ctBuffer);
 
-  return "tws2://" + "tws2." + b64urlEncode(token);
+  const payload = new Uint8Array(1 + nonce.length + ctBytes.length);
+  payload[0] = 0x03; // TwinSock v3
+  payload.set(nonce, 1);
+  payload.set(ctBytes, 1 + nonce.length);
+
+  return "tws3://" + b64urlEncode(payload);
 }
 
-function generateShareKey() {
-  return b64urlEncode(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+/* ==========================================================================
+   UI Event Handlers & Interactions
+   ========================================================================== */
+const tabPublic = document.getElementById("tab-public");
+const tabPersonal = document.getElementById("tab-personal");
+const keyInput = document.getElementById("key-input");
+const keyHint = document.getElementById("key-hint");
+const expirationSelect = document.getElementById("expiration-select");
+const customDateBox = document.getElementById("custom-date-box");
+const customDateInput = document.getElementById("custom-date-input");
+const bundleCheck = document.getElementById("bundle-check");
+const lockExportCheck = document.getElementById("lock-export-check");
+const inputArea = document.getElementById("input-area");
+const protocolBar = document.getElementById("protocol-bar");
+const btnPaste = document.getElementById("btn-paste");
+const btnClear = document.getElementById("btn-clear");
+const btnEncode = document.getElementById("btn-encode");
+const outputCard = document.getElementById("output-card");
+const outputArea = document.getElementById("output-area");
+const btnCopyAll = document.getElementById("btn-copy-all");
+const statusBanner = document.getElementById("status-banner");
+const statusText = document.getElementById("status-text");
+const toast = document.getElementById("toast");
+const toastText = document.getElementById("toast-text");
+
+let isPersonalKey = false;
+let toastTimeout = null;
+
+function showToast(msg) {
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastText.textContent = msg;
+  toast.classList.add("show");
+  toastTimeout = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
-function toHex(bytes) {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/* ---------- UI ---------- */
-const keyInput = document.getElementById("key");
-const inputArea = document.getElementById("input");
-const outputArea = document.getElementById("output");
-const statusEl = document.getElementById("status");
-const encodeBtn = document.getElementById("encode");
-const copyBtn = document.getElementById("copy");
-
-function setStatus(text, kind) {
-  statusEl.textContent = text;
-  statusEl.className = "status" + (kind ? " " + kind : "");
-}
-
-function clearStatus() {
-  statusEl.textContent = "";
-}
-
-document.getElementById("genKey").addEventListener("click", () => {
-  keyInput.value = generateShareKey();
-  clearStatus();
+tabPublic.addEventListener("click", () => {
+  if (!isPersonalKey) return;
+  isPersonalKey = false;
+  tabPublic.classList.add("active");
+  tabPersonal.classList.remove("active");
+  keyInput.disabled = true;
+  keyInput.value = "";
+  keyInput.placeholder = "Using public key (abcdfg)...";
+  keyHint.textContent = "Public links automatically decrypt in all Socksicle installations without extra keys.";
 });
 
-encodeBtn.addEventListener("click", async () => {
-  const key = keyInput.value.trim();
-  if (!key) {
-    setStatus("Share key is empty — paste or generate a key first.", "error");
-    return;
+tabPersonal.addEventListener("click", () => {
+  if (isPersonalKey) return;
+  isPersonalKey = true;
+  tabPersonal.classList.add("active");
+  tabPublic.classList.remove("active");
+  keyInput.disabled = false;
+  keyInput.placeholder = "Paste your private TwinSock share key from Settings...";
+  keyHint.textContent = "Personal links can only be unlocked by clients possessing your exact private key.";
+  keyInput.focus();
+});
+
+expirationSelect.addEventListener("change", () => {
+  if (expirationSelect.value === "custom") {
+    customDateBox.style.display = "block";
+    if (!customDateInput.value) {
+      const d = new Date(Date.now() + 86400000);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      customDateInput.value = d.toISOString().slice(0, 16);
+    }
+  } else {
+    customDateBox.style.display = "none";
   }
+});
+
+function updateProtocolTags() {
   const lines = inputArea.value.split("\n").map((s) => s.trim()).filter(Boolean);
   if (!lines.length) {
-    setStatus("Nothing to encode — enter at least one ss://, vless://, vmess://, hysteria2:// or subscription URL.", "error");
+    protocolBar.innerHTML = '<span style="font-size: 11.5px; color: var(--text-dim);">No links detected</span>';
     return;
   }
-  encodeBtn.disabled = true;
+  const counts = {};
+  for (const line of lines) {
+    let p = "Raw Link";
+    if (line.startsWith("ss://")) p = "Shadowsocks";
+    else if (line.startsWith("vless://")) p = "VLESS";
+    else if (line.startsWith("vmess://")) p = "VMess";
+    else if (line.startsWith("hysteria2://") || line.startsWith("hy2://")) p = "Hysteria 2";
+    else if (line.startsWith("http://") || line.startsWith("https://")) p = "Subscription";
+    counts[p] = (counts[p] || 0) + 1;
+  }
+  protocolBar.innerHTML = Object.entries(counts)
+    .map(([proto, count]) => `<span class="proto-badge ${proto === 'Subscription' ? 'sub' : ''}">${count}&times; ${proto}</span>`)
+    .join(" ");
+}
+
+inputArea.addEventListener("input", updateProtocolTags);
+
+btnPaste.addEventListener("click", async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      inputArea.value = text;
+      updateProtocolTags();
+      showToast("Pasted from clipboard");
+    }
+  } catch (e) {
+    showToast("Clipboard access denied");
+  }
+});
+
+btnClear.addEventListener("click", () => {
+  inputArea.value = "";
+  updateProtocolTags();
+  outputCard.style.display = "none";
+  inputArea.focus();
+});
+
+function calculateExpiresAt() {
+  const mode = expirationSelect.value;
+  const nowSec = Math.floor(Date.now() / 1000);
+  switch (mode) {
+    case "1d": return nowSec + 86400;
+    case "7d": return nowSec + 7 * 86400;
+    case "30d": return nowSec + 30 * 86400;
+    case "90d": return nowSec + 90 * 86400;
+    case "custom": {
+      const val = customDateInput.value;
+      if (!val) throw new Error("Please select a valid expiration date/time.");
+      const ts = Math.floor(new Date(val).getTime() / 1000);
+      if (isNaN(ts)) throw new Error("Invalid custom expiration date.");
+      return ts;
+    }
+    default: return null;
+  }
+}
+
+async function performEncoding() {
+  let key = DEFAULT_SHARE_KEY;
+  if (isPersonalKey) {
+    key = keyInput.value.trim();
+    if (!key) {
+      showToast("Enter your private TwinSock share key");
+      keyInput.focus();
+      return;
+    }
+  }
+
+  const lines = inputArea.value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) {
+    showToast("Enter at least one proxy link or subscription URL");
+    inputArea.focus();
+    return;
+  }
+
+  let expiresAt = null;
+  try {
+    expiresAt = calculateExpiresAt();
+  } catch (err) {
+    showToast(err.message);
+    return;
+  }
+
+  const lockExport = lockExportCheck.checked;
+  const isBundle = bundleCheck.checked;
+  btnEncode.disabled = true;
+
   try {
     const encoded = [];
-    for (const line of lines) {
-      encoded.push(await encodeLink(key, line));
+    if (isBundle && lines.length > 1) {
+      // Bundle all lines into a single tws3:// link
+      encoded.push(await encodeLink(key, lines, lockExport, expiresAt));
+    } else {
+      for (const line of lines) {
+        encoded.push(await encodeLink(key, line, lockExport, expiresAt));
+      }
     }
     outputArea.value = encoded.join("\n");
-    setStatus("Encoded " + encoded.length + " link" + (encoded.length === 1 ? "" : "s") + ".", "ok");
+    outputCard.style.display = "block";
+    outputCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    let summary = isBundle && lines.length > 1 
+      ? `Bundled ${lines.length} servers into 1 tws3:// link (AES-256-GCM)`
+      : `Encrypted ${encoded.length} link${encoded.length === 1 ? '' : 's'} (AES-256-GCM)`;
+
+    if (isPersonalKey) summary += " &bull; Personal Key";
+    if (lockExport) summary += " &bull; Export Locked";
+    if (expiresAt) summary += ` &bull; Expires: ${new Date(expiresAt * 1000).toLocaleDateString()}`;
+
+    statusText.innerHTML = summary;
+    statusBanner.className = "status-banner success";
+    showToast(isBundle && lines.length > 1 ? `Bundled ${lines.length} servers into 1 link!` : `Encrypted ${encoded.length} link(s)!`);
   } catch (err) {
-    setStatus("Encoding failed: " + err.message, "error");
+    statusText.textContent = "Encryption error: " + err.message;
+    statusBanner.className = "status-banner error";
+    outputCard.style.display = "block";
+    showToast("Encryption failed: " + err.message);
   } finally {
-    encodeBtn.disabled = false;
+    btnEncode.disabled = false;
+  }
+}
+
+btnEncode.addEventListener("click", performEncoding);
+
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    e.preventDefault();
+    performEncoding();
   }
 });
 
-copyBtn.addEventListener("click", () => {
+btnCopyAll.addEventListener("click", () => {
   const text = outputArea.value;
-  if (!text) {
-    setStatus("Nothing to copy — encode some links first.", "error");
-    return;
-  }
-  const done = () => setStatus("Copied to clipboard.", "ok");
-  const fallback = () => {
-    outputArea.focus();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("Copied tws3:// link(s) to clipboard");
+  }).catch(() => {
     outputArea.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } catch (err) {
-      setStatus("Copy failed: " + err.message, "error");
-    }
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(fallback);
-  } else {
-    fallback();
-  }
+    document.execCommand("copy");
+    showToast("Copied to clipboard");
+  });
 });
 
-/* ---------- Dev self-test (console only): known test vectors ---------- */
-(async () => {
-  try {
-    const enc = new TextEncoder();
-    const ok1 = toHex(sha3_256(new Uint8Array(0))) ===
-      "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a";
-    const ok2 = toHex(blake2b512(enc.encode("abc"), null)) ===
-      "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923";
-    const key = generateShareKey();
-    const token = await encodeLink(key, "ss://example");
-    const ok3 = token.startsWith("tws2://tws2.");
-    console.log("[TwinSock] SHA3-256 vector: " + (ok1 ? "PASS" : "FAIL"));
-    console.log("[TwinSock] BLAKE2b-512 vector: " + (ok2 ? "PASS" : "FAIL"));
-    console.log("[TwinSock] encode smoke test: " + (ok3 ? "PASS" : "FAIL"));
-    console.log("[TwinSock] self-test done: " + (ok1 && ok2 && ok3 ? "ALL PASS" : "FAILURES"));
-  } catch (err) {
-    console.error("[TwinSock] self-test error:", err);
-  }
-})();
 </script>
 </body>
 </html>

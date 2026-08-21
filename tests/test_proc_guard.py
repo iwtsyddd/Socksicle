@@ -66,6 +66,35 @@ class FreePortTest(unittest.TestCase):
         after = pg.pick_free_port(busy)
         self.assertEqual(after, busy)
 
+    def test_wait_for_port_available_when_free(self):
+        port = _free_port()
+        self.assertTrue(pg.wait_for_port_available("127.0.0.1", port, timeout=0.5))
+
+    def test_wait_for_port_available_timeout_when_busy(self):
+        port = _free_port()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", port))
+            s.listen(1)
+            self.assertFalse(pg.wait_for_port_available("127.0.0.1", port, timeout=0.1))
+
+    def test_wait_for_port_available_succeeds_when_freed(self):
+        port = _free_port()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", port))
+        s.listen(1)
+
+        def _delayed_close():
+            import time
+            time.sleep(0.1)
+            s.close()
+
+        import threading
+        t = threading.Thread(target=_delayed_close)
+        t.start()
+        res = pg.wait_for_port_available("127.0.0.1", port, timeout=1.0)
+        t.join()
+        self.assertTrue(res)
+
 
 class MarkerTest(unittest.TestCase):
 

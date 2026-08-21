@@ -5,6 +5,81 @@ All notable changes to Socksicle are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-21
+
+> **TwinSock v3, Asynchronous Engine Architecture, Auto-Healing Watchdog, Smooth Tab Animations & UI/UX Overhaul.**
+> Upgrades the cryptographic core to AES-256-GCM + HKDF-SHA256, eliminates all UI freezes via non-blocking
+> socket probing, adds an intelligent auto-recovery system for unexpected proxy engine drops, introduces smooth
+> sliding pill tab animations, improves expiration visibility, and delivers a polished Material 3 layout.
+
+### Added
+
+- 🔐 **TwinSock v3 Cryptography Vault**:
+  - Upgraded cryptographic core to **AES-256-GCM** (NIST SP 800-38D, single-pass AEAD with 12-byte nonce and 16-byte authentication tag).
+  - Standardized KDF to **HKDF-SHA256** (RFC 5869) with domain-separated info parameters.
+  - Stable hardware fingerprinting using Windows Registry `MachineGuid` and Linux `/etc/machine-id` (resilient to VPN / MAC address and kernel updates) with fallback.
+  - Generates `tws3.` tokens and `tws3://` share links with pure v3 mode for new users and isolated legacy retention/upgrade for v2 users.
+  - Upgraded `gen_url.html` with WebCrypto AES-GCM and HKDF for v3 share links.
+  - Added dependency `cryptography>=42.0` in `pyproject.toml`.
+- 🛡️ **Kill Switch (Beta) with Firewall Leak Protection & Crash Recovery**:
+  - Blocks all direct outbound traffic via OS firewall (`netsh advfirewall` on Windows, `nftables`/`iptables` on Linux) upon unexpected tunnel drops, preventing real public IP leaks.
+  - Whitelists loopback (`127.0.0.1`, `::1`), local LAN subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), active proxy server endpoints, and proxy engine binaries.
+  - **Emergency Startup Cleanup**: Automatically detects and purges stale `Socksicle_KS_*` firewall rules during early application initialization, preventing permanent internet lockouts even if the previous process was terminated via Task Manager (`taskkill /F`).
+  - **Windows UAC Elevation Prompt**: Prompts user for Administrator rights when enabling Kill Switch if running non-elevated.
+- 🌐 **Custom Secure DNS (DoH / DoT)**:
+  - Supports curated presets: **Cloudflare DoH** (`https://1.1.1.1/dns-query`), **Quad9 DoH** (`https://dns.quad9.net/dns-query`), **AdGuard DoH** (`https://dns.adguard-dns.com/dns-query` with ad/tracker blocking), **Google DoH** (`https://dns.google/dns-query`), and a **Custom** text field for custom DoH/DoT/IP resolvers.
+  - Injected directly into `sing-box` and `xray-core` outbound and DNS routing configurations.
+- 🌐 **TwinSock v3 URL Studio 2026 Edition (`gen_url.html`)**:
+  - Complete redesign with modern 2026 aesthetics, deep nebula glassmorphism, and an interactive particle canvas background.
+  - Standardized on a 100% English interface with streamlined controls and micro-animations.
+  - **Live Protocol Detector**: Instantly classifies pasted inputs into `Shadowsocks`, `VLESS`, `VMess`, `Hysteria2`, or `Subscription` badges in real time.
+  - **Drag & Drop Import**: Supports dropping `.txt`, `.json`, or config lists directly into the input area.
+  - **Offline QR Code Studio**: Built-in standalone client-side QR generator for scanning encrypted tokens directly with mobile cameras.
+  - **Cross-Platform Launchers**: Added robust launch scripts [`URL Encryption Studio.bat`](file:///c:/Users/iwtsd/Documents/projects/Socksicle/URL%20Encryption%20Studio.bat) (Windows) and [`URL Encryption Studio.sh`](file:///c:/Users/iwtsd/Documents/projects/Socksicle/URL%20Encryption%20Studio.sh) (Linux with automatic multi-browser discovery).
+- ⚡ **Asynchronous Non-Blocking Proxy Connection Pipeline**:
+  - Offloaded SOCKS5 socket handshakes and proxy availability probing to background worker threads (`_AsyncProbeJob` via `QThreadPool`), completely eliminating UI freezes when connecting or checking connectivity.
+- 🛡️ **Auto-Healing & Instant Engine Reconnect Watchdog**:
+  - Built an automatic recovery mechanism in `ConnectionManager`: if an underlying proxy engine (`xray`, `sing-box`, or `sslocal`) exits or drops unexpectedly during an active session, Socksicle automatically cleans up socket bindings and initiates an immediate, seamless reconnection (`⚡ Reconnecting (1/3)...`) while preserving switch state without requiring manual toggling.
+- ✨ **Smooth Animated Sliding Pill Tabs (`TabBar`)**:
+  - Rebuilt the subscription navigation bar with an animated sliding indicator pill (`QPropertyAnimation` with `QEasingCurve.OutCubic`) for fluid transitions between subscription groups.
+- ⏳ **Server Expiration Countdown & Badge**:
+  - Servers with active expiration dates (`expires_at`) dynamically calculate and display remaining time (`⏳ 48h`, `⏳ 3d`, `⏳ 35m`) with full timestamp tooltip, or render a distinct `[EXPIRED]` badge when expired.
+- 🎨 **Windows Color Emoji & Flag Rendering**:
+  - Bundled Windows-compatible `NotoColorEmoji.ttf` font loaded non-blockingly on Windows via `QFontDatabase.addApplicationFont()`.
+  - Configured font fallbacks so country flags (🇺🇸, 🇩🇪, 🇫🇷, 🇯🇵, etc.) and UI icons render in full color without empty glyphs.
+- 🛡️ **Secure Non-Root TUN Mode on Linux (Capabilities & Polkit)**:
+  - Eliminated restarting the entire GUI application as root (`pkexec`/`sudo`) on Linux by utilizing Polkit `pkexec setcap` for granular network capabilities (`cap_net_admin,cap_net_bind_service+ep`).
+
+### Changed & Optimized
+
+- 🎛️ **Action Bar & Server List UI Polish**:
+  - Unified action bar button heights (32px), 16px pill border-radius, circular 32×32 action icons (`📤`, `📥`), and responsive hover/pressed states.
+  - Added an 8px vertical margin below the search bar (`search_bar`) for clean visual spacing above server cards.
+  - Perfected horizontal alignment across server cards: protocol badges, latency ping, remaining expiration countdown, share, and delete buttons are strictly aligned along the vertical center axis (`Qt.AlignVCenter`).
+- 🔄 **Non-Interfering Navigation & Hot-Toggle**:
+  - Switching between subscription tabs or closing/canceling the Settings Dialog no longer triggers unwanted disconnections or list resets.
+  - Switching active servers while connected seamlessly hot-reconnects to the new node.
+- 🌐 **Single Geo-IP Lookup & 1-Minute Ping Cadence**:
+  - IP and country flag lookups are performed strictly once upon establishing connection, eliminating redundant external geo requests.
+  - Latency ping timer relaxed to 60 seconds (1 minute) to minimize background network traffic.
+- 🚀 **Cold Startup Acceleration**:
+  - **Lazy QR Code Imports**: Deferred `import qrcode` (and heavy `PIL`/Pillow dependencies) inside `ServerItem.show_qr_code()`, saving 150–250ms on Python module imports at startup.
+  - **Deferred Subscription Sync**: Delayed startup subscription auto-update by 3 seconds to prevent network I/O contention during initial UI frame rendering.
+- 🎨 **Rendering & State Optimizations**:
+  - Batched card population in `ServerListPanel.refresh()` using `setUpdatesEnabled(False)` / `setUpdatesEnabled(True)` to prevent UI layout thrashing.
+  - Cached `QFont` objects in `AnimatedRadioButton` to avoid re-allocations on every `paintEvent` frame.
+- 🔒 **Safe JSON Export**:
+  - JSON profile export strictly filters out protected servers and subscriptions marked with `lock_export=True`.
+- 🧹 **Guaranteed Engine Termination on Windows**:
+  - Hardened `teardown()` on Windows with aggressive process tree kill (`proc.kill()` and `taskkill /F /T /PID`) preventing orphan processes, socket hogging, or port collisions.
+
+### Fixed
+
+- 🧯 Fixed toggle switch erroneously snapping to OFF during auto-reconnection attempts.
+- ⚡ Fixed PySide6 signal disconnection RuntimeWarnings by replacing dynamic `.disconnect()` calls with persistent slot handlers.
+- 🌐 Fixed multi-node subscription deduplication dropping secondary nodes sharing an entrypoint domain or UUID.
+- 🌐 Fixed multi-line Base64 subscription decoding and bracketed IPv6 parsing.
+
 ## [1.4.1] - 2026-08-16
 
 > **Linux reliability patch.** Socksicle fixes the power toggle silently doing

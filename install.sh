@@ -26,7 +26,19 @@ mkdir -p "$ICON_DIR"
 mkdir -p "$DESKTOP_DIR"
 
 # Copy files
-cp -r ui utils main.py icon.png "$INSTALL_DIR/"
+cp -r ui utils data main.py icon.png gen_url.html "URL Encryption Studio.sh" "$INSTALL_DIR/" 2>/dev/null || cp -r ui utils main.py icon.png gen_url.html "$INSTALL_DIR/" 2>/dev/null || cp -r ui utils main.py icon.png "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/URL Encryption Studio.sh" 2>/dev/null || true
+
+# Install Polkit policy for TUN mode if directory is writable or via sudo
+POLKIT_ACTIONS_DIR="/usr/share/polkit-1/actions"
+if [ -f "$INSTALL_DIR/data/org.socksicle.tun.policy" ]; then
+    if [ -w "$POLKIT_ACTIONS_DIR" ]; then
+        cp "$INSTALL_DIR/data/org.socksicle.tun.policy" "$POLKIT_ACTIONS_DIR/" 2>/dev/null || true
+    elif command -v sudo &> /dev/null && [ -t 0 ]; then
+        echo "Installing Polkit policy for TUN mode (may prompt for sudo)..."
+        sudo cp "$INSTALL_DIR/data/org.socksicle.tun.policy" "$POLKIT_ACTIONS_DIR/" 2>/dev/null || true
+    fi
+fi
 
 # Create wrapper script
 cat > "$BIN_DIR/$BIN_NAME" <<EOF

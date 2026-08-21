@@ -2,6 +2,7 @@
 
 Manages sing-box binary discovery, config generation, and process lifecycle.
 """
+import ipaddress
 import logging
 import os
 import subprocess
@@ -80,7 +81,7 @@ def _build_singbox_transport(server) -> dict | None:
         path = getattr(server, "path", "") or ""
         if path:
             transport["path"] = path
-        host_header = getattr(server, "host_header", "") or ""
+        host_header = getattr(server, "host_header", "") or getattr(server, "server_name", "") or ""
         if host_header:
             transport["headers"] = {"Host": host_header}
         return transport
@@ -119,9 +120,10 @@ def _build_singbox_vless_outbound(server) -> dict:
         sni = getattr(server, "server_name", "") or ""
         if sni:
             tls["server_name"] = sni
-        fp = getattr(server, "fingerprint", "") or ""
-        if fp:
-            tls["utls"] = {"enabled": True, "fingerprint": fp}
+        fp = getattr(server, "fingerprint", "") or "chrome"
+        tls["utls"] = {"enabled": True, "fingerprint": fp}
+        if getattr(server, "allow_insecure", False) or getattr(server, "insecure", False):
+            tls["insecure"] = True
         if security == "reality":
             pbk = getattr(server, "public_key", "") or ""
             sid = getattr(server, "short_id", "") or ""
@@ -153,9 +155,10 @@ def _build_singbox_vmess_outbound(server) -> dict:
         sni = getattr(server, "server_name", "") or ""
         if sni:
             tls["server_name"] = sni
-        fp = getattr(server, "fingerprint", "") or ""
-        if fp:
-            tls["utls"] = {"enabled": True, "fingerprint": fp}
+        fp = getattr(server, "fingerprint", "") or "chrome"
+        tls["utls"] = {"enabled": True, "fingerprint": fp}
+        if getattr(server, "allow_insecure", False) or getattr(server, "insecure", False):
+            tls["insecure"] = True
         outbound["tls"] = tls
 
     transport = _build_singbox_transport(server)
@@ -248,7 +251,61 @@ _SINGBOX_OUTBOUND_BUILDERS = {
 }
 
 
-def _generate_config(server, local_port, tun_mode=False) -> dict:
+def _build_singbox_dns_server(dns_target: str, tag="remote-dns", detour="proxy") -> dict:
+    """Build a sing-box DNS server block for DoH, DoT, or standard UDP DNS."""
+    if not dns_target or dns_target.strip().lower() == "default":
+        return {
+            "tag": tag,
+            "type": "https",
+            "server": "1.1.1.1",
+            "path": "/dns-query",
+            "detour": detour,
+        }
+    target = dns_target.strip()
+    if target.startswith("https://"):
+        from urllib.parse import urlparse
+        p = urlparse(target)
+        host = p.hostname or "1.1.1.1"
+        path = p.path or "/dns-query"
+        server_entry = {
+            "tag": tag,
+            "type": "https",
+            "server": host,
+            "path": path,
+            "detour": detour,
+        }
+        if p.port:
+            server_entry["server_port"] = p.port
+        return server_entry
+    elif target.startswith("tls://"):
+        from urllib.parse import urlparse
+        p = urlparse(target)
+        host = p.hostname or "1.1.1.1"
+        return {
+            "tag": tag,
+            "type": "tls",
+            "server": host,
+            "server_port": p.port or 853,
+            "detour": detour,
+        }
+    else:
+        clean = target.replace("udp://", "")
+        if ":" in clean and not clean.startswith("["):
+            host, port_s = clean.rsplit(":", 1)
+            port = int(port_s)
+        else:
+            host = clean
+            port = 53
+        return {
+            "tag": tag,
+            "type": "udp",
+            "server": host,
+            "server_port": port,
+            "detour": detour,
+        }
+
+
+def _generate_config(server, local_port, tun_mode=False, custom_dns=None) -> dict:
     """Generate sing-box JSON config for a single server."""
     protocol = getattr(server, "protocol", ProxyProtocol.SHADOWSOCKS)
 
@@ -257,74 +314,123 @@ def _generate_config(server, local_port, tun_mode=False) -> dict:
         raise ValueError(f"sing-box engine does not support protocol: {protocol}")
     outbound = builder(server)
 
+    server_host = getattr(server, "host", "") or ""
+    server_rule = None
+    server_ip_cidr = None
+    if server_host:
+        try:
+            ip = ipaddress.ip_address(server_host)
+            cidr = f"{server_host}/32" if ip.version == 4 else f"{server_host}/128"
+            server_ip_cidr = cidr
+            server_rule = {"ip_cidr": [cidr], "outbound": "direct"}
+        except ValueError:
+            server_rule = {"domain": [server_host], "outbound": "direct"}
+
     if tun_mode:
-        tun_adapter_name = f"socksicle-{int(time.time() * 1000) % 100000}"
+        tun_adapter_name = "socksicle-tun"
+        outbound["domain_resolver"] = "local-dns"
+        direct_outbound = {"type": "direct", "tag": "direct", "domain_resolver": "local-dns"}
+        rules = [
+            {"action": "sniff"},
+            {"inbound": ["tun-in"], "protocol": "dns", "action": "hijack-dns"},
+            {"port": 123, "outbound": "direct"},
+        ]
+        if server_rule:
+            rules.append(server_rule)
+        rules.append({"ip_is_private": True, "outbound": "direct"})
+
+        tun_inbound: dict = {
+            "type": "tun",
+            "tag": "tun-in",
+            "interface_name": tun_adapter_name,
+            "address": [
+                "172.19.0.1/30",
+                "fdfe:dcba:9876::1/126",
+            ],
+            "auto_route": True,
+            "strict_route": True,
+            "route_address": [
+                "0.0.0.0/1",
+                "128.0.0.0/1",
+                "::/1",
+                "8000::/1",
+            ],
+            "stack": "mixed",
+            "endpoint_independent_nat": True,
+        }
+        if server_ip_cidr:
+            tun_inbound["route_exclude_address"] = [server_ip_cidr]
+
+        dns_servers = []
+        if custom_dns and custom_dns.strip() and custom_dns.strip().lower() != "default":
+            dns_servers.append(_build_singbox_dns_server(custom_dns, "remote-dns", "proxy"))
+            dns_servers.append({
+                "tag": "remote-dns-fallback",
+                "type": "https",
+                "server": "1.1.1.1",
+                "path": "/dns-query",
+                "detour": "proxy",
+            })
+        else:
+            dns_servers.extend([
+                {
+                    "tag": "remote-dns",
+                    "type": "https",
+                    "server": "1.1.1.1",
+                    "path": "/dns-query",
+                    "detour": "proxy",
+                },
+                {
+                    "tag": "remote-dns-google",
+                    "type": "https",
+                    "server": "8.8.8.8",
+                    "path": "/dns-query",
+                    "detour": "proxy",
+                },
+            ])
+        dns_servers.append({
+            "tag": "local-dns",
+            "type": "local",
+            "detour": "direct",
+        })
+
         config = {
             "log": {"level": "info", "timestamp": True},
             "dns": {
-                "servers": [
-                    {
-                        "tag": "remote-dns",
-                        "type": "https",
-                        "server": "1.1.1.1",
-                        "path": "/dns-query",
-                        "detour": "proxy"
-                    },
-                    {
-                        "tag": "local-dns",
-                        "type": "local",
-                        "detour": "direct"
-                    }
-                ],
-                "strategy": "prefer_ipv4"
+                "servers": dns_servers,
+                "strategy": "prefer_ipv4",
+                "reverse_mapping": True,
             },
             "inbounds": [
-                {
-                    "type": "tun",
-                    "tag": "tun-in",
-                    "interface_name": tun_adapter_name,
-                    "address": [
-                        "172.19.0.1/30"
-                    ],
-                    "auto_route": True,
-                    "strict_route": False,
-                    "stack": "system",
-                    "endpoint_independent_nat": True
-                },
+                tun_inbound,
                 {
                     "type": "mixed",
                     "tag": "mixed-in",
                     "listen": "127.0.0.1",
                     "listen_port": int(local_port),
-                }
+                },
             ],
             "outbounds": [
                 outbound,
-                {
-                    "type": "direct",
-                    "tag": "direct"
-                }
+                direct_outbound,
             ],
             "route": {
                 "default_domain_resolver": "remote-dns",
-                "rules": [
-                    {
-                        "action": "sniff"
-                    },
-                    {
-                        "protocol": "dns",
-                        "action": "hijack-dns"
-                    },
-                    {
-                        "ip_is_private": True,
-                        "outbound": "direct"
-                    }
-                ],
+                "rules": rules,
                 "auto_detect_interface": True,
-                "final": "proxy"
-            }
+                "final": "proxy",
+            },
         }
     else:
+        direct_outbound = {"type": "direct", "tag": "direct"}
+        rules = [
+            {"protocol": "dns", "outbound": "direct"},
+            {"port": 123, "outbound": "direct"},
+        ]
+        if server_rule:
+            rules.append(server_rule)
+        rules.append({"ip_is_private": True, "outbound": "direct"})
+
         config = {
             "log": {"level": "info", "timestamp": True},
             "inbounds": [
@@ -337,22 +443,10 @@ def _generate_config(server, local_port, tun_mode=False) -> dict:
             ],
             "outbounds": [
                 outbound,
-                {
-                    "type": "direct",
-                    "tag": "direct"
-                }
+                direct_outbound
             ],
             "route": {
-                "rules": [
-                    {
-                        "protocol": "dns",
-                        "outbound": "direct"
-                    },
-                    {
-                        "ip_is_private": True,
-                        "outbound": "direct"
-                    }
-                ],
+                "rules": rules,
                 "final": "proxy"
             }
         }
@@ -373,12 +467,6 @@ def _tun_device_check() -> tuple[bool, str]:
             "missing on this system. Enable it (e.g. 'modprobe tun') and "
             "ensure the TUN kernel module is loaded, then try again."
         )
-    if not os.access("/dev/net/tun", os.R_OK | os.W_OK):
-        return False, (
-            "TUN Mode requires read/write access to /dev/net/tun, which "
-            "current user lacks. Run Socksicle as root, or add your user "
-            "to the tun device group, then try again."
-        )
     return True, ""
 
 
@@ -388,6 +476,7 @@ class SingBoxEngine(ProxyEngine):
     def __init__(self):
         super().__init__()
         self.tun_mode = False
+        self.custom_dns = None
 
     def _clean_stale_tun_adapter(self):
         """Clean any stale Wintun/socksicle network adapter on Windows."""
@@ -410,6 +499,20 @@ class SingBoxEngine(ProxyEngine):
                 log.error("TUN start blocked: %s", reason)
                 self.statusChanged.emit(f"Connection failed: {reason}", True)
                 return False
+            if sys.platform.startswith("linux"):
+                from ..platform_utils import check_tun_capabilities, grant_tun_capabilities
+                binary = self.find_binary()
+                if binary and not check_tun_capabilities(binary):
+                    log.info("sing-box binary lacks TUN capabilities; requesting grant...")
+                    granted = grant_tun_capabilities(binary)
+                    if not granted or not check_tun_capabilities(binary):
+                        reason = (
+                            "TUN mode on Linux requires cap_net_admin capabilities on sing-box. "
+                            "Authorization was declined or setcap failed."
+                        )
+                        log.error("TUN start blocked: %s", reason)
+                        self.statusChanged.emit(f"Connection failed: {reason}", True)
+                        return False
         return super().start(server)
 
     def teardown(self):
@@ -427,7 +530,7 @@ class SingBoxEngine(ProxyEngine):
         return _install(progress_cb=progress_cb)
 
     def build_config(self, server):
-        return _generate_config(server, self.local_port, tun_mode=self.tun_mode)
+        return _generate_config(server, self.local_port, tun_mode=self.tun_mode, custom_dns=self.custom_dns)
 
     def build_args(self, server):
         return super().build_args(server, ["run", "-c"], "singbox-")

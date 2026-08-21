@@ -443,6 +443,32 @@ def _install(profile: InstallProfile, progress_cb=None) -> InstallResult:
         os.replace(install_tmp, managed)
         _write_marker(dest_dir, profile.marker_name, profile.version,
                       profile.temp_prefix)
+
+        # On Windows, ensure companion DLLs (like wintun.dll, libcronet.dll) are copied to dest_dir
+        if sys.platform == "win32":
+            from utils.platform_utils import get_app_dir
+            for companion in ("wintun.dll", "libcronet.dll", "geoip.dat", "geosite.dat"):
+                target_file = dest_dir / companion
+                if not target_file.exists():
+                    for src_candidate in (
+                        get_app_dir() / "bin" / companion,
+                        get_app_dir() / "bin" / "singbox" / companion,
+                        get_app_dir() / "bin" / "xray" / companion,
+                    ):
+                        if src_candidate.exists():
+                            try:
+                                shutil.copy2(src_candidate, target_file)
+                                break
+                            except OSError:
+                                pass
+
+        if sys.platform.startswith("linux") and profile.engine_name == "sing-box":
+            try:
+                from utils.platform_utils import check_tun_capabilities, grant_tun_capabilities
+                if not check_tun_capabilities(managed):
+                    grant_tun_capabilities(managed)
+            except Exception as e:
+                log.debug("Auto-provisioning TUN capabilities failed: %s", e)
     except OSError as e:
         return InstallResult(False, None, f"Installation failed: {e}")
     finally:

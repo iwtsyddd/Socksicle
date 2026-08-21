@@ -27,7 +27,7 @@ class ServerManager:
         if twinsock.migration_occurred():
             self.save_manual_servers()
         self.settings = self.load_settings()
-        self._ensure_tws2_share_key()
+        self._ensure_tws3_share_key()
 
     def load_manual_servers(self):
         if os.path.exists(self.config_file):
@@ -96,45 +96,64 @@ class ServerManager:
                 "engine": "sslocal", "ping_method": DEFAULT_PING_METHOD,
                 "tun_mode": False, "theme_preset": "dynamic"}
 
-    def _ensure_tws2_share_key(self):
-        if self.settings.get("tws2_share_key"):
+    def has_legacy_tws2_key(self) -> bool:
+        """True if the user has an unupgraded legacy tws2_share_key and has not generated a native tws3_share_key."""
+        return bool(self.settings.get("tws2_share_key")) and not bool(self.settings.get("tws3_share_key"))
+
+    def get_share_key(self) -> str:
+        return self.settings.get("tws3_share_key") or self.settings.get("tws2_share_key", "")
+
+    def upgrade_to_tws3_share_key(self) -> str:
+        new_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
+        self.settings["tws3_share_key"] = new_key
+        self.settings.pop("tws2_share_key", None)
+        self.save_settings()
+        log.info("vault: upgraded user share key to native TwinSock v3")
+        return new_key
+
+    def _ensure_tws3_share_key(self):
+        if self.settings.get("tws3_share_key") or self.settings.get("tws2_share_key"):
             return
-        self.settings["tws2_share_key"] = base64.urlsafe_b64encode(
+        self.settings["tws3_share_key"] = base64.urlsafe_b64encode(
             secrets.token_bytes(32)).rstrip(b"=").decode()
         self.save_settings()
-        log.info("generated TwinSock share key")
+        log.info("generated TwinSock v3 share key")
 
     def save_settings(self):
-        if not self.settings.get("tws2_share_key"):
-            key = self._stored_tws2_share_key()
+        if not self.settings.get("tws3_share_key") and not self.settings.get("tws2_share_key"):
+            key = self._stored_tws_share_key()
             if key:
-                self.settings["tws2_share_key"] = key
+                self.settings["tws3_share_key"] = key
             else:
-                self.settings["tws2_share_key"] = base64.urlsafe_b64encode(
+                self.settings["tws3_share_key"] = base64.urlsafe_b64encode(
                     secrets.token_bytes(32)).rstrip(b"=").decode()
-                log.info("generated TwinSock share key")
+                log.info("generated TwinSock v3 share key")
         with open(self.settings_file, 'w', encoding="utf-8") as f:
             json.dump(self.settings, f)
 
-    def _stored_tws2_share_key(self):
+    def _stored_tws_share_key(self):
         if not os.path.exists(self.settings_file):
             return None
         try:
             with open(self.settings_file, 'r', encoding="utf-8", errors="replace") as f:
                 data = json.load(f)
             if isinstance(data, dict):
-                key = data.get("tws2_share_key")
+                key = data.get("tws3_share_key") or data.get("tws2_share_key")
                 if isinstance(key, str) and key:
                     return key
         except (json.JSONDecodeError, OSError, ValueError) as e:
             log.error("Failed to read stored settings: %s", e)
         return None
 
-    def add_from_link(self, raw_link):
-        """Parse an ss://, vless://, or vmess:// link and append it to the manual server list."""
-        server = Server.from_link(raw_link, default_name="New Server")
+    def add_from_link(self, raw_link, default_name="New Server", lock_export: bool = False, expires_at: int | None = None):
+        """Parse an ss://, vless://, vmess://, hysteria2://, or hy2:// link and append it to the manual server list."""
+        server = Server.from_link(raw_link, default_name=default_name)
         if not server:
             return None
+        if lock_export:
+            server.lock_export = True
+        if expires_at is not None:
+            server.expires_at = expires_at
         self.manual_servers.append(server)
         self.save_manual_servers()
         return server

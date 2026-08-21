@@ -51,10 +51,23 @@ def port_available(host: str, port: int) -> bool:
     """Return True when a TCP listener could be bound at host:port now."""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if sys.platform != "win32":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, int(port)))
         return True
     except (OSError, ValueError, OverflowError):
         return False
+
+
+def wait_for_port_available(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Wait up to timeout seconds for a port to become available."""
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        if port_available(host, port):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
 
 
 def pick_free_port(preferred: int, host: str = "127.0.0.1",

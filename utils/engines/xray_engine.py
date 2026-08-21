@@ -125,15 +125,20 @@ def _build_xray_stream_settings(server) -> dict:
 def _build_xray_vless_outbound(server) -> dict:
     """Generate outbound dict for a VLESS server."""
     from utils.server_model import ProxyProtocol
+    transport = getattr(server, 'transport', 'tcp') or 'tcp'
+    flow = getattr(server, 'flow', '') or ''
+    user = {
+        "id": getattr(server, 'uuid', ''),
+        "encryption": getattr(server, 'encryption', 'none') or 'none',
+    }
+    if flow and transport == 'tcp':
+        user["flow"] = flow
+
     settings = {
         "vnext": [{
             "address": server.host,
-            "port": server.port,
-            "users": [{
-                "id": server.uuid,
-                "encryption": getattr(server, 'encryption', 'none'),
-                "flow": getattr(server, 'flow', ''),
-            }]
+            "port": int(server.port),
+            "users": [user]
         }]
     }
     return {
@@ -149,11 +154,11 @@ def _build_xray_vmess_outbound(server) -> dict:
     settings = {
         "vnext": [{
             "address": server.host,
-            "port": server.port,
+            "port": int(server.port),
             "users": [{
-                "id": server.uuid,
-                "alterId": getattr(server, 'alter_id', 0),
-                "security": getattr(server, 'vmess_security', 'auto'),
+                "id": getattr(server, 'uuid', ''),
+                "alterId": int(getattr(server, 'alter_id', 0) or 0),
+                "security": getattr(server, 'vmess_security', 'auto') or 'auto',
             }]
         }]
     }
@@ -173,7 +178,7 @@ def _build_xray_ss_outbound(server) -> dict:
         "settings": {
             "servers": [{
                 "address": server.host,
-                "port": server.port,
+                "port": int(server.port),
                 "method": server.method,
                 "password": server.password,
             }]
@@ -189,7 +194,7 @@ _XRAY_OUTBOUND_BUILDERS = {
 }
 
 
-def _generate_config(server, local_port) -> dict:
+def _generate_config(server, local_port, custom_dns=None) -> dict:
     """Generate xray JSON config for a single proxy server."""
     protocol = getattr(server, 'protocol', ProxyProtocol.SHADOWSOCKS)
     builder = _XRAY_OUTBOUND_BUILDERS.get(protocol)
@@ -197,7 +202,7 @@ def _generate_config(server, local_port) -> dict:
         raise ValueError(f"Xray engine does not support protocol: {protocol}")
     outbound = builder(server)
 
-    return {
+    cfg = {
         "log": {"loglevel": "warning"},
         "inbounds": [
             {
@@ -205,7 +210,7 @@ def _generate_config(server, local_port) -> dict:
                 "listen": "127.0.0.1",
                 "port": int(local_port),
                 "protocol": "socks",
-                "settings": {"udp": True},
+                "settings": {"udp": True, "auth": "noauth"},
                 "sniffing": {"enabled": True, "destOverride": ["http", "tls"]}
             }
         ],
@@ -221,6 +226,20 @@ def _generate_config(server, local_port) -> dict:
             "rules": []
         }
     }
+    if custom_dns and custom_dns.strip() and custom_dns.strip().lower() != "default":
+        target = custom_dns.strip()
+        if target.startswith("https://"):
+            dns_server = target
+        elif target.startswith("tls://"):
+            dns_server = target.replace("tls://", "tcp://")
+        elif target.startswith("udp://"):
+            dns_server = target.replace("udp://", "")
+        else:
+            dns_server = target
+        cfg["dns"] = {
+            "servers": [dns_server, "localhost"]
+        }
+    return cfg
 
 
 class XrayEngine(ProxyEngine):
@@ -228,6 +247,7 @@ class XrayEngine(ProxyEngine):
 
     def __init__(self):
         super().__init__()
+        self.custom_dns = None
 
     def find_binary(self):
         return _find_binary()
@@ -239,7 +259,7 @@ class XrayEngine(ProxyEngine):
         return _install(progress_cb=progress_cb)
 
     def build_config(self, server):
-        return _generate_config(server, self.local_port)
+        return _generate_config(server, self.local_port, custom_dns=self.custom_dns)
 
     def build_args(self, server):
         return super().build_args(server, ["run", "-c"], "xray-")

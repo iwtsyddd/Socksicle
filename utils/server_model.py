@@ -1,6 +1,8 @@
 """Server model shared across the app."""
+import functools
 import ipaddress
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -9,6 +11,7 @@ from .ss_parser import decode_ss_link
 log = logging.getLogger(__name__)
 
 
+@functools.lru_cache(maxsize=1024)
 def is_private_host(host: str) -> bool:
     """Return True if *host* resolves to a private/loopback/reserved IP."""
     try:
@@ -56,6 +59,15 @@ class Server:
     ports: str = ""
     up_mbps: int = 0
     down_mbps: int = 0
+    lock_export: bool = False
+    expires_at: int | None = None
+
+    @property
+    def is_expired(self) -> bool:
+        """Return True if expires_at is set and current time is past it."""
+        if self.expires_at is None or self.expires_at <= 0:
+            return False
+        return time.time() >= self.expires_at
 
     @classmethod
     def from_link(cls, raw_link, default_name="Server"):
@@ -69,7 +81,8 @@ class Server:
         if not data:
             return None
         host = data.get('server', '')
-        if is_private_host(host):
+        is_priv = is_private_host(host)
+        if is_priv:
             log.warning("SS link points to private/reserved IP: %s", host)
         return cls(
             key=raw_link,
@@ -80,7 +93,7 @@ class Server:
             password=data.get('password', ''),
             plugin=data.get('plugin', ''),
             plugin_opts=data.get('plugin_opts', ''),
-            is_private=is_private_host(host),
+            is_private=is_priv,
         )
 
     @classmethod
@@ -108,6 +121,14 @@ class Server:
             down_mbps = int(data.get('down_mbps', 0))
         except (TypeError, ValueError):
             down_mbps = 0
+        expires_at_raw = data.get('expires_at')
+        expires_at = None
+        if expires_at_raw is not None:
+            try:
+                expires_at = int(expires_at_raw)
+            except (ValueError, TypeError):
+                expires_at = None
+        lock_export = bool(data.get('lock_export', False))
         return cls(
             key=data.get('key', ''),
             name=data.get('name', 'Server'),
@@ -138,6 +159,8 @@ class Server:
             ports=data.get('ports', ''),
             up_mbps=up_mbps,
             down_mbps=down_mbps,
+            lock_export=lock_export,
+            expires_at=expires_at,
         )
 
     def to_dict(self):
@@ -196,6 +219,10 @@ class Server:
             d["up_mbps"] = self.up_mbps
         if self.down_mbps:
             d["down_mbps"] = self.down_mbps
+        if self.lock_export:
+            d["lock_export"] = True
+        if self.expires_at is not None:
+            d["expires_at"] = self.expires_at
         return d
 
     @property

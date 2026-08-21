@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 
-from utils.engines.base import ProxyEngine, EngineType, CheckResult, InstallResult
+from utils.engines.base import ProxyEngine, EngineType, CheckResult, InstallResult, set_pdeathsig
 from utils.engines import common
 from utils.engines.sslocal_engine import SslocalEngine
 from utils.engines.xray_engine import XrayEngine, _detect_target as xray_detect
@@ -492,6 +492,193 @@ class SingBoxEngineBinaryTest(unittest.TestCase):
         result = engine.check_usable(path)
         self.assertFalse(result.usable)
         self.assertIn("too small", result.reason)
+
+
+class SingBoxEngineTunCapabilitiesTest(unittest.TestCase):
+    """Test Linux TUN capability checks and grants during SingBoxEngine start and install."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.bin_path = _make_file(self.root / "bin" / "sing-box")
+        self.server = SimpleNamespace(
+            host="1.2.3.4", port=8388, method="aes-256-gcm", password="pw"
+        )
+
+    def test_start_tun_linux_success_when_capabilities_present(self):
+        engine = SingBoxEngine()
+        engine.tun_mode = True
+        fake_proc = mock.Mock(pid=1234, poll=mock.Mock(return_value=None),
+                              stdout=io.StringIO(""), stderr=io.StringIO(""))
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(engine, "find_binary", return_value=self.bin_path), \
+             mock.patch("utils.engines.singbox_engine.os.path.exists", return_value=True), \
+             mock.patch("utils.platform_utils.check_tun_capabilities", return_value=True) as check_cap, \
+             mock.patch("utils.platform_utils.grant_tun_capabilities") as grant_cap, \
+             mock.patch("utils.engines.base.port_available", return_value=True), \
+             mock.patch("utils.engines.base.cleanup_stale_engines"), \
+             mock.patch("utils.engines.base.write_pid_marker"), \
+             mock.patch("subprocess.Popen", return_value=fake_proc):
+            ok = engine.start(self.server)
+            self.assertTrue(ok)
+            check_cap.assert_called_with(self.bin_path)
+            grant_cap.assert_not_called()
+            engine.teardown()
+
+    def test_start_tun_linux_grants_capabilities_when_missing(self):
+        engine = SingBoxEngine()
+        engine.tun_mode = True
+        fake_proc = mock.Mock(pid=1234, poll=mock.Mock(return_value=None),
+                              stdout=io.StringIO(""), stderr=io.StringIO(""))
+        # First check returns False, second check (after grant) returns True
+        cap_results = [False, True]
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(engine, "find_binary", return_value=self.bin_path), \
+             mock.patch("utils.engines.singbox_engine.os.path.exists", return_value=True), \
+             mock.patch("utils.platform_utils.check_tun_capabilities", side_effect=cap_results) as check_cap, \
+             mock.patch("utils.platform_utils.grant_tun_capabilities", return_value=True) as grant_cap, \
+             mock.patch("utils.engines.base.port_available", return_value=True), \
+             mock.patch("utils.engines.base.cleanup_stale_engines"), \
+             mock.patch("utils.engines.base.write_pid_marker"), \
+             mock.patch("subprocess.Popen", return_value=fake_proc):
+            ok = engine.start(self.server)
+            self.assertTrue(ok)
+            grant_cap.assert_called_once_with(self.bin_path)
+            engine.teardown()
+
+    def test_start_tun_linux_fails_when_grant_declined(self):
+        engine = SingBoxEngine()
+        engine.tun_mode = True
+        statuses = []
+        engine.statusChanged.connect(lambda msg, err: statuses.append((msg, err)))
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(engine, "find_binary", return_value=self.bin_path), \
+             mock.patch("utils.engines.singbox_engine.os.path.exists", return_value=True), \
+             mock.patch("utils.platform_utils.check_tun_capabilities", return_value=False), \
+             mock.patch("utils.platform_utils.grant_tun_capabilities", return_value=False) as grant_cap:
+            ok = engine.start(self.server)
+            self.assertFalse(ok)
+            grant_cap.assert_called_once_with(self.bin_path)
+            self.assertTrue(any("requires cap_net_admin" in s[0] and s[1] for s in statuses))
+
+    def test_start_tun_linux_fails_when_tun_device_missing(self):
+        engine = SingBoxEngine()
+        engine.tun_mode = True
+        statuses = []
+        engine.statusChanged.connect(lambda msg, err: statuses.append((msg, err)))
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(engine, "find_binary", return_value=self.bin_path), \
+             mock.patch("utils.engines.singbox_engine.os.path.exists", return_value=False), \
+             mock.patch("utils.platform_utils.grant_tun_capabilities") as grant_cap:
+            ok = engine.start(self.server)
+            self.assertFalse(ok)
+            grant_cap.assert_not_called()
+            self.assertTrue(any("/dev/net/tun" in s[0] and s[1] for s in statuses))
+
+
+class PdeathsigAndProcessLifecycleTest(unittest.TestCase):
+    """Test Linux PR_SET_PDEATHSIG and platform-specific process launch options."""
+
+    def test_set_pdeathsig_noop_on_windows(self):
+        with mock.patch("sys.platform", "win32"):
+            self.assertFalse(set_pdeathsig())
+
+    def test_set_pdeathsig_noop_on_darwin(self):
+        with mock.patch("sys.platform", "darwin"):
+            self.assertFalse(set_pdeathsig())
+
+    def test_set_pdeathsig_linux_success(self):
+        fake_libc = mock.MagicMock()
+        fake_libc.prctl.return_value = 0
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch("ctypes.CDLL", return_value=fake_libc), \
+             mock.patch("ctypes.util.find_library", return_value="libc.so.6"):
+            res = set_pdeathsig()
+            self.assertTrue(res)
+            import signal
+            fake_libc.prctl.assert_called_once()
+            args = fake_libc.prctl.call_args[0]
+            self.assertEqual(args[0], 1)  # PR_SET_PDEATHSIG
+            self.assertEqual(args[1].value, signal.SIGTERM)
+
+    def test_set_pdeathsig_linux_handles_failure(self):
+        fake_libc = mock.MagicMock()
+        fake_libc.prctl.return_value = -1
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch("ctypes.CDLL", return_value=fake_libc):
+            res = set_pdeathsig()
+            self.assertFalse(res)
+
+    def test_set_pdeathsig_linux_handles_exception(self):
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch("ctypes.CDLL", side_effect=OSError("libc not found")):
+            res = set_pdeathsig()
+            self.assertFalse(res)
+
+    def test_engine_start_linux_passes_preexec_fn(self):
+        engine = SslocalEngine()
+        server = SimpleNamespace(host="1.2.3.4", port=8388,
+                                 method="aes-256-gcm", password="pw")
+        fake_proc = mock.Mock(pid=1234, poll=mock.Mock(return_value=None),
+                              stdout=io.StringIO(""), stderr=io.StringIO(""))
+        with mock.patch.object(engine, "find_binary", return_value=Path("/fake/bin/sslocal")), \
+             mock.patch("utils.engines.base.port_available", return_value=True), \
+             mock.patch("utils.engines.base.cleanup_stale_engines"), \
+             mock.patch("utils.engines.base.write_pid_marker"), \
+             mock.patch("sys.platform", "linux"), \
+             mock.patch("subprocess.Popen", return_value=fake_proc) as popen_mock:
+            ok = engine.start(server)
+            self.assertTrue(ok)
+            popen_mock.assert_called_once()
+            kwargs = popen_mock.call_args[1]
+            self.assertIn("preexec_fn", kwargs)
+            self.assertEqual(kwargs["preexec_fn"], set_pdeathsig)
+            self.assertNotIn("creationflags", kwargs)
+            self.assertTrue(kwargs["close_fds"])
+            engine.teardown()
+
+    def test_engine_start_windows_passes_creationflags_not_preexec(self):
+        engine = SslocalEngine()
+        server = SimpleNamespace(host="1.2.3.4", port=8388,
+                                 method="aes-256-gcm", password="pw")
+        fake_proc = mock.Mock(pid=1234, poll=mock.Mock(return_value=None),
+                              stdout=io.StringIO(""), stderr=io.StringIO(""))
+        with mock.patch.object(engine, "find_binary", return_value=Path("C:/fake/bin/sslocal.exe")), \
+             mock.patch("utils.engines.base.port_available", return_value=True), \
+             mock.patch("utils.engines.base.cleanup_stale_engines"), \
+             mock.patch("utils.engines.base.write_pid_marker"), \
+             mock.patch("sys.platform", "win32"), \
+             mock.patch("subprocess.Popen", return_value=fake_proc) as popen_mock:
+            ok = engine.start(server)
+            self.assertTrue(ok)
+            popen_mock.assert_called_once()
+            kwargs = popen_mock.call_args[1]
+            self.assertNotIn("preexec_fn", kwargs)
+            self.assertIn("creationflags", kwargs)
+            self.assertFalse(kwargs["close_fds"])
+            engine.teardown()
+
+    def test_engine_start_darwin_no_creationflags_no_preexec(self):
+        engine = SslocalEngine()
+        server = SimpleNamespace(host="1.2.3.4", port=8388,
+                                 method="aes-256-gcm", password="pw")
+        fake_proc = mock.Mock(pid=1234, poll=mock.Mock(return_value=None),
+                              stdout=io.StringIO(""), stderr=io.StringIO(""))
+        with mock.patch.object(engine, "find_binary", return_value=Path("/fake/bin/sslocal")), \
+             mock.patch("utils.engines.base.port_available", return_value=True), \
+             mock.patch("utils.engines.base.cleanup_stale_engines"), \
+             mock.patch("utils.engines.base.write_pid_marker"), \
+             mock.patch("sys.platform", "darwin"), \
+             mock.patch("subprocess.Popen", return_value=fake_proc) as popen_mock:
+            ok = engine.start(server)
+            self.assertTrue(ok)
+            popen_mock.assert_called_once()
+            kwargs = popen_mock.call_args[1]
+            self.assertNotIn("preexec_fn", kwargs)
+            self.assertNotIn("creationflags", kwargs)
+            self.assertTrue(kwargs["close_fds"])
+            engine.teardown()
 
 
 if __name__ == "__main__":

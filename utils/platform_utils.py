@@ -116,6 +116,109 @@ def elevate_restart() -> bool:
     return False
 
 
+def _find_getcap() -> str | None:
+    """Locate getcap utility across PATH and standard system directories."""
+    import shutil
+    found = shutil.which("getcap")
+    if found:
+        return found
+    for candidate in ("/sbin/getcap", "/usr/sbin/getcap", "/usr/bin/getcap"):
+        if Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def check_tun_capabilities(binary_path: str | Path | None) -> bool:
+    """Check if binary has Linux capabilities (cap_net_admin) for TUN mode.
+
+    Returns True if cap_net_admin is present on the binary file.
+    Returns False on non-Linux, missing binary, missing getcap, or missing capabilities.
+    """
+    if not is_linux() or binary_path is None:
+        return False
+    path = Path(binary_path)
+    if not path.is_file():
+        return False
+
+    getcap_bin = _find_getcap()
+    if not getcap_bin:
+        log.debug("check_tun_capabilities: getcap utility not found")
+        return False
+
+    try:
+        proc = subprocess.run(
+            [getcap_bin, str(path)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode != 0:
+            return False
+        output = (proc.stdout or "").lower()
+        return "cap_net_admin" in output
+    except (OSError, subprocess.SubprocessError) as e:
+        log.debug("check_tun_capabilities failed: %s", e)
+        return False
+
+
+def grant_tun_capabilities(binary_path: str | Path | None, parent_window=None) -> bool:
+    """Grant cap_net_admin,cap_net_bind_service+ep to binary via pkexec setcap.
+
+    Returns True if capability was successfully granted, False otherwise.
+    """
+    if not is_linux() or binary_path is None:
+        return False
+    path = Path(binary_path)
+    if not path.is_file():
+        log.warning("grant_tun_capabilities: binary not found: %s", path)
+        return False
+
+    import shutil
+    pkexec_bin = shutil.which("pkexec")
+    if not pkexec_bin:
+        for candidate in ("/usr/bin/pkexec", "/bin/pkexec"):
+            if Path(candidate).is_file():
+                pkexec_bin = candidate
+                break
+    if not pkexec_bin:
+        log.warning("grant_tun_capabilities: pkexec not found")
+        return False
+
+    setcap_bin = shutil.which("setcap")
+    if not setcap_bin:
+        for candidate in ("/sbin/setcap", "/usr/sbin/setcap", "/usr/bin/setcap"):
+            if Path(candidate).is_file():
+                setcap_bin = candidate
+                break
+    if not setcap_bin:
+        setcap_bin = "setcap"
+
+    cmd = [pkexec_bin, setcap_bin, "cap_net_admin,cap_net_bind_service+ep", str(path)]
+    log.info("Requesting TUN capabilities via Polkit: %s", " ".join(cmd))
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode == 0:
+            log.info("Successfully executed pkexec setcap for %s", path)
+            if check_tun_capabilities(path):
+                return True
+            if not _find_getcap():
+                return True
+            return False
+        log.warning("pkexec setcap failed with code %d: %s", proc.returncode, (proc.stderr or "").strip())
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("pkexec setcap timed out")
+        return False
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("grant_tun_capabilities failed: %s", e)
+        return False
+
+
 def windows_dark_mode() -> bool | None:
     """Return True (dark), False (light), or None when unknown."""
     if not is_windows():
@@ -129,6 +232,23 @@ def windows_dark_mode() -> bool | None:
         val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
         return val == 0
     except OSError:
+        return None
+
+
+def linux_dark_mode() -> bool | None:
+    """Return True (dark), False (light), or None when unknown via XDG Desktop Portal."""
+    if not is_linux():
+        return None
+    try:
+        from utils.theme import get_portal_color_scheme
+        scheme = get_portal_color_scheme()
+        if scheme == 1:
+            return True
+        elif scheme == 2:
+            return False
+        return None
+    except Exception as e:
+        log.debug("Failed to detect Linux dark mode: %s", e)
         return None
 
 

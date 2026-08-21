@@ -35,6 +35,101 @@ PRESET_SEEDS = {
 }
 
 
+def _unwrap_dbus_variant(raw):
+    """Unwrap nested QDBusVariant / QVariant wrappers to raw Python types."""
+    while hasattr(raw, "variant"):
+        raw = raw.variant()
+    return raw
+
+
+def _parse_portal_accent_color(raw) -> QColor | None:
+    """Parse raw portal accent-color setting into a valid QColor."""
+    if raw is None:
+        return None
+    raw = _unwrap_dbus_variant(raw)
+    if isinstance(raw, QColor) and raw.isValid():
+        return raw
+
+    if isinstance(raw, (tuple, list)) and len(raw) >= 3:
+        try:
+            r, g, b = float(raw[0]), float(raw[1]), float(raw[2])
+            if 0.0 <= r <= 1.0 and 0.0 <= g <= 1.0 and 0.0 <= b <= 1.0:
+                return QColor.fromRgbF(r, g, b)
+            elif 0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255:
+                return QColor(int(r), int(g), int(b))
+        except (ValueError, TypeError):
+            pass
+
+    if isinstance(raw, str):
+        s = raw.strip()
+        c = QColor(s)
+        if c.isValid():
+            return c
+
+    return None
+
+
+def read_portal_setting(namespace: str, key: str, bus=None):
+    """Read a setting from org.freedesktop.portal.Settings via D-Bus session bus."""
+    try:
+        if bus is None:
+            try:
+                from PySide6.QtDBus import QDBusConnection
+                bus = QDBusConnection.sessionBus()
+            except (ImportError, AttributeError) as e:
+                log.debug("PySide6.QtDBus unavailable for portal settings: %s", e)
+                return None
+        if not hasattr(bus, "isConnected") or not bus.isConnected():
+            return None
+
+        from PySide6.QtDBus import QDBusInterface
+        iface = QDBusInterface(
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Settings",
+            bus,
+        )
+        if not iface.isValid():
+            return None
+
+        reply = iface.call("Read", namespace, key)
+        if not reply.isValid() or not reply.arguments():
+            return None
+
+        return _unwrap_dbus_variant(reply.arguments()[0])
+    except Exception as e:
+        log.debug("Failed to read portal setting %s/%s: %s", namespace, key, e)
+        return None
+
+
+def get_portal_accent_color(bus=None) -> QColor | None:
+    """Read accent color from XDG Desktop Portal Settings."""
+    try:
+        raw = read_portal_setting("org.freedesktop.appearance", "accent-color", bus=bus)
+        return _parse_portal_accent_color(raw)
+    except Exception as e:
+        log.debug("Failed to read portal accent color: %s", e)
+        return None
+
+
+def get_portal_color_scheme(bus=None) -> int | None:
+    """Read color scheme from XDG Desktop Portal Settings.
+
+    Returns:
+        0: No preference
+        1: Prefer dark
+        2: Prefer light
+        None: Unavailable / error
+    """
+    try:
+        raw = read_portal_setting("org.freedesktop.appearance", "color-scheme", bus=bus)
+        if raw is not None:
+            return int(raw)
+    except (ValueError, TypeError, Exception) as e:
+        log.debug("Failed to read portal color scheme: %s", e)
+    return None
+
+
 class M3Theme:
     """Material 3 (Material You) Theme Manager."""
 
@@ -85,6 +180,14 @@ class M3Theme:
         self.on_success = "#1B5E20"
         self.success_container = "#2E7D32"
 
+    def _get_linux_portal_accent_color(self, bus=None) -> QColor | None:
+        """Read native Linux Accent Color from XDG Desktop Portal."""
+        return get_portal_accent_color(bus=bus)
+
+    def _get_linux_portal_color_scheme(self, bus=None) -> int | None:
+        """Read native Linux Color Scheme preference from XDG Desktop Portal."""
+        return get_portal_color_scheme(bus=bus)
+
     def apply_theme(self, preset_key: str = "dynamic"):
         """Apply a preset or extract dynamic color from desktop."""
         self.preset_key = preset_key
@@ -105,7 +208,16 @@ class M3Theme:
                 self.generate_palette(accent)
                 return
 
-        # 2. Try desktop wallpaper extraction
+        # 2. Try Linux XDG Desktop Portal accent color
+        if sys.platform.startswith("linux"):
+            accent = self._get_linux_portal_accent_color()
+            if accent:
+                log.info("Applying dynamic theme from Linux XDG portal accent color: %s", accent.name())
+                self._current_seed_hex = accent.name().lower()
+                self.generate_palette(accent)
+                return
+
+        # 3. Try desktop wallpaper extraction
         wallpaper_path = self.get_wallpaper_path()
         if wallpaper_path and os.path.exists(wallpaper_path):
             color = self.extract_dominant_color(wallpaper_path)
@@ -115,7 +227,7 @@ class M3Theme:
                 self.generate_palette(color)
                 return
 
-        # 3. Fallback to default Lavender M3
+        # 4. Fallback to default Lavender M3
         seed = PRESET_SEEDS["lavender"]
         self._current_seed_hex = seed.name().lower()
         self.generate_palette(seed)
@@ -124,6 +236,10 @@ class M3Theme:
         """Get current dynamic system seed color without mutating theme."""
         if sys.platform == "win32":
             accent = self._get_windows_accent_color()
+            if accent:
+                return accent
+        elif sys.platform.startswith("linux"):
+            accent = self._get_linux_portal_accent_color()
             if accent:
                 return accent
         wallpaper_path = self.get_wallpaper_path()

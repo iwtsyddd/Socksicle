@@ -7,7 +7,7 @@ log = logging.getLogger("geo_utils")
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_HEADER_BYTES = 16 * 1024
-_RESET_WINERRNOS = {10052, 10053, 10054, 10058}
+_RESET_WINERRNOS = {10048, 10052, 10053, 10054, 10058}
 
 
 def get_flag_emoji(country_code):
@@ -180,8 +180,13 @@ def fetch_ip_info_via_proxy(proxy_port, timeout=10):
     url_path = "/json/?fields=status,countryCode,query"
     log.info("Fetching IP via proxy on port %s...", proxy_port)
 
+    import socket
     s = socks.socksocket()
     try:
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        except OSError:
+            pass
         s.set_proxy(socks.SOCKS5, "127.0.0.1", int(proxy_port))
         s.settimeout(timeout)
         s.connect((url_host, 80))

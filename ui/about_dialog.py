@@ -18,7 +18,7 @@ class AboutDialog(QDialog):
         self.layout = QVBoxLayout(self.container)
         self.layout.setContentsMargins(24, 24, 24, 24)
 
-        self.title = QLabel("Socksicle v1.4")
+        self.title = QLabel("Socksicle v1.5")
         self.title.setAlignment(Qt.AlignCenter)
 
         self.desc = QLabel(

@@ -307,3 +307,37 @@ class TestParseLinksFromText:
     def test_no_links(self):
         assert parse_links_from_text("nothing here") == []
         assert parse_links_from_text("") == []
+
+
+# --- Optimizations tests ---
+
+class TestOptimizations:
+    def test_is_private_host_lru_cached(self):
+        from utils.server_model import is_private_host
+        is_private_host.cache_clear()
+        assert is_private_host("127.0.0.1") is True
+        assert is_private_host("127.0.0.1") is True
+        info = is_private_host.cache_info()
+        assert info.hits >= 1
+        assert info.maxsize == 1024
+
+    def test_parse_mbps_formats(self):
+        from utils.link_parser import _parse_mbps
+        assert _parse_mbps("100Mbps") == 100
+        assert _parse_mbps("50mb/s") == 50
+        assert _parse_mbps("10M") == 10
+        assert _parse_mbps("2000kbps") == 2000
+        assert _parse_mbps("500k") == 500
+        assert _parse_mbps("") == 0
+        assert _parse_mbps(None) == 0
+        assert _parse_mbps("invalid") == 0
+
+    def test_link_parser_is_private_flag(self):
+        vless_priv = parse_link("vless://uuid@192.168.1.1:443?security=none#Priv")
+        assert vless_priv is not None
+        assert vless_priv.is_private is True
+
+        vless_pub = parse_link("vless://uuid@8.8.8.8:443?security=none#Pub")
+        assert vless_pub is not None
+        assert vless_pub.is_private is False
+

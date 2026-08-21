@@ -249,5 +249,63 @@ class WindowsPathTest(unittest.TestCase):
         window_inst.reconnect_after_resume.assert_called_once_with()
 
 
+class CLIMinimizedTest(unittest.TestCase):
+    """Tests for --minimized / -m command line argument behavior in main.py."""
+
+    def test_parse_args_flags(self):
+        args_default = main.parse_args([])
+        self.assertFalse(args_default.minimized)
+
+        args_long = main.parse_args(["--minimized"])
+        self.assertTrue(args_long.minimized)
+
+        args_short = main.parse_args(["-m"])
+        self.assertTrue(args_short.minimized)
+
+    def test_minimized_with_tray_available_skips_window_show(self):
+        app_inst = mock.Mock()
+        app_inst.exec.return_value = 0
+        window_inst = mock.Mock()
+
+        with mock.patch.object(main, "QApplication", return_value=app_inst), \
+             mock.patch.object(main, "RoundedWindow", return_value=window_inst), \
+             mock.patch.object(main, "QIcon"), \
+             mock.patch.object(main, "get_app_dir", return_value=Path.cwd() / "icon.png"), \
+             mock.patch.object(main, "provision_backend", return_value=_backend_ok()), \
+             mock.patch.object(main, "initialize"), \
+             mock.patch.object(main, "apply_high_dpi_policy"), \
+             mock.patch.object(main, "desktop_file_name", return_value="Socksicle.desktop"), \
+             mock.patch.object(main, "install_native_handlers"), \
+             mock.patch.object(main.QSystemTrayIcon, "isSystemTrayAvailable", return_value=True), \
+             mock.patch.object(sys, "exit", side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                main.main(["--minimized"])
+
+        window_inst.show.assert_not_called()
+        app_inst.exec.assert_called_once()
+
+    def test_minimized_without_tray_available_shows_window(self):
+        app_inst = mock.Mock()
+        app_inst.exec.return_value = 0
+        window_inst = mock.Mock()
+
+        with mock.patch.object(main, "QApplication", return_value=app_inst), \
+             mock.patch.object(main, "RoundedWindow", return_value=window_inst), \
+             mock.patch.object(main, "QIcon"), \
+             mock.patch.object(main, "get_app_dir", return_value=Path.cwd() / "icon.png"), \
+             mock.patch.object(main, "provision_backend", return_value=_backend_ok()), \
+             mock.patch.object(main, "initialize"), \
+             mock.patch.object(main, "apply_high_dpi_policy"), \
+             mock.patch.object(main, "desktop_file_name", return_value="Socksicle.desktop"), \
+             mock.patch.object(main, "install_native_handlers"), \
+             mock.patch.object(main.QSystemTrayIcon, "isSystemTrayAvailable", return_value=False), \
+             mock.patch.object(sys, "exit", side_effect=SystemExit):
+            with self.assertRaises(SystemExit):
+                main.main(["-m"])
+
+        window_inst.show.assert_called_once()
+        app_inst.exec.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

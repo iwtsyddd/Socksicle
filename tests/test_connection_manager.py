@@ -112,6 +112,26 @@ class ConnectionManagerSwitchEngineTest(unittest.TestCase):
         mgr.switch_engine(new_engine)
         self.assertEqual(mgr.local_port, 2080)
 
+    def test_switch_engine_handles_disconnect_type_error_and_runtime_error(self):
+        mgr = ConnectionManager()
+        fake_old = mock.Mock()
+        fake_old.statusChanged.disconnect.side_effect = TypeError("Not connected")
+        fake_old.connectionStateChanged.disconnect.side_effect = RuntimeError("Object deleted")
+        fake_old.logUpdated.disconnect.side_effect = TypeError("Not connected")
+        fake_old.local_port = 1080
+        fake_old.is_connected = False
+        mgr._engine = fake_old
+
+        fake_new = mock.Mock()
+        fake_new.engine_type = EngineType.XRAY
+        fake_new.statusChanged = mock.Mock()
+        fake_new.connectionStateChanged = mock.Mock()
+        fake_new.logUpdated = mock.Mock()
+
+        # Should not raise exception
+        mgr.switch_engine(fake_new)
+        self.assertEqual(mgr.engine, fake_new)
+
 
 class ConnectionManagerToggleTest(unittest.TestCase):
 
@@ -210,7 +230,7 @@ class ConnectionManagerProbeTest(unittest.TestCase):
         mgr = ConnectionManager()
         mgr.state = CONNECTING
         mgr._probe_deadline = time.monotonic() + 10
-        fake_pool = SimpleNamespace(start=lambda job: None)
+        fake_pool = SimpleNamespace(start=lambda job: job.run())
         with mock.patch.object(mgr._engine, "is_running", return_value=True), \
              mock.patch("utils.connection_manager.socks5_proxy_ready", return_value=True), \
              mock.patch.object(mgr._engine, "confirm_connected"), \

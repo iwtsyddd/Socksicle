@@ -14,3 +14,10 @@ def qapp():
     if inst is None:
         inst = QApplication([])
     yield inst
+
+
+@pytest.fixture(autouse=True)
+def _mock_init_app_fonts(monkeypatch):
+    """Prevent font file access violations in parallel xdist workers."""
+    import utils.font_utils
+    monkeypatch.setattr(utils.font_utils, "init_app_fonts", lambda: None)
