@@ -374,11 +374,20 @@ class ConnectionManager(QObject):
             if info:
                 if self.state == CONNECTED and gen == self._generation:
                     self.current_geo = info
-                    self.geoInfoReady.emit(info)
+                    try:
+                        self.geoInfoReady.emit(info)
+                    except (RuntimeError, ReferenceError):
+                        return
                 return
-            time.sleep(GEO_RETRY_PAUSE_S)
+            for _ in range(int(GEO_RETRY_PAUSE_S * 10)):
+                if self.state != CONNECTED or gen != self._generation:
+                    return
+                time.sleep(0.1)
         if self.state == CONNECTED and gen == self._generation:
-            self.geoError.emit("geo unavailable")
+            try:
+                self.geoError.emit("geo unavailable")
+            except (RuntimeError, ReferenceError):
+                return
 
     def _update_ping(self):
         if not self.is_connected:
