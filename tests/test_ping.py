@@ -123,6 +123,14 @@ class _Socks5TestServer:
             self.sock.close()
         except Exception:
             pass
+        if hasattr(self, "thread") and self.thread.is_alive():
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.05)
+                    s.connect(("127.0.0.1", self.port))
+            except Exception:
+                pass
+            self.thread.join(timeout=0.2)
 
 
 class _RawListener:
@@ -166,6 +174,14 @@ class _RawListener:
             self.sock.close()
         except Exception:
             pass
+        if hasattr(self, "thread") and self.thread.is_alive():
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.05)
+                    s.connect(("127.0.0.1", self.port))
+            except Exception:
+                pass
+            self.thread.join(timeout=0.2)
 
 
 def test_ping_measures_until_headers_complete():
@@ -788,6 +804,14 @@ class _Socks5RateLimitedServer:
             self.sock.close()
         except Exception:
             pass
+        if hasattr(self, "thread") and self.thread.is_alive():
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.05)
+                    s.connect(("127.0.0.1", self.port))
+            except Exception:
+                pass
+            self.thread.join(timeout=0.2)
 
 
 def test_http_ping_handles_429_rate_limit():

@@ -27,6 +27,8 @@ def _mock_init_app_fonts(monkeypatch):
 def _flush_qt_events(qapp):
     """Flush any queued events after each test."""
     yield
-    inst = QApplication.instance()
-    if inst is not None:
-        inst.processEvents()
+    try:
+        if app := QApplication.instance():
+            app.processEvents()
+    except (RuntimeError, ReferenceError):
+        pass

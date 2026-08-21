@@ -268,18 +268,6 @@ def provision_backend(engine_type=None) -> object | None:
     loop.exec()
 
     tracker.stop()
-    try:
-        worker.finished.disconnect(receiver.on_finished)
-    except Exception:
-        pass
-    try:
-        dialog.canceled.disconnect(receiver.on_canceled)
-    except Exception:
-        pass
-    try:
-        worker.progress.disconnect(tracker.update)
-    except Exception:
-        pass
 
     if thread.isRunning():
         thread.quit()
@@ -290,8 +278,11 @@ def provision_backend(engine_type=None) -> object | None:
     worker.deleteLater()
     thread.deleteLater()
 
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    QCoreApplication.processEvents()
+    try:
+        if app := QCoreApplication.instance():
+            app.processEvents()
+    except (RuntimeError, ReferenceError):
+        pass
 
     return receiver.result
 
