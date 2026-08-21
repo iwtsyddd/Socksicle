@@ -54,9 +54,22 @@ drawer.json
 # Engines (auto-downloaded on first run)
 bin/
 
-# Local build artifacts
-Socksicle_latest_setup.exe
+# Local build artifacts & Executables
+*.exe
+*.dll
+*.pyd
+*.so
+*.dylib
 *.setup.exe
+Socksicle_latest_setup.exe
+
+# PyInstaller
+*.spec
+
+# Nuitka compiler artifacts
+*.build/
+*.dist/
+*.onefile-build/
 
 # OS
 .DS_Store

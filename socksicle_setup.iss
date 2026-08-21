@@ -23,6 +23,11 @@ var
   ShortcutPage: TWizardPage;
 
   PythonStatusLabel: TNewStaticText;
+  PythonHelpLabel: TNewStaticText;
+  DownloadPyButton: TNewButton;
+  DirectDownloadPyButton: TNewButton;
+  RecheckPyButton: TNewButton;
+
   StatusLabel: TNewStaticText;
   EngineVersionLabel: TNewStaticText;
   SocksicleVersionLabel: TNewStaticText;
@@ -30,6 +35,7 @@ var
   ShortcutStatusLabel: TNewStaticText;
   MakeShortcutButton: TNewButton;
 
+  DetectedPythonExe: String;
   SelectedEngine: String;
   EngineRepo: String;
   EngineVersion: String;
@@ -96,46 +102,176 @@ begin
 end;
 
 
-function GetPythonVersion(var OutVersion: String): Boolean;
+function ParsePythonVersion(const RawVer: String; var OutMajor, OutMinor: Integer): Boolean;
+var
+  S, VerStr: String;
+  P, P2: Integer;
+begin
+  Result := False;
+  OutMajor := 0;
+  OutMinor := 0;
+  S := Trim(RawVer);
+  if Pos('Python ', S) = 1 then
+    VerStr := Trim(Copy(S, 8, Length(S)))
+  else
+    VerStr := S;
+
+  P := Pos('.', VerStr);
+  if P > 0 then
+  begin
+    OutMajor := StrToIntDef(Copy(VerStr, 1, P - 1), 0);
+    VerStr := Copy(VerStr, P + 1, Length(VerStr));
+    P2 := Pos('.', VerStr);
+    if P2 > 0 then
+      OutMinor := StrToIntDef(Copy(VerStr, 1, P2 - 1), 0)
+    else
+      OutMinor := StrToIntDef(VerStr, 0);
+
+    if (OutMajor > 3) or ((OutMajor = 3) and (OutMinor >= 10)) then
+      Result := True;
+  end;
+end;
+
+
+function TestPythonExe(const ExePath: String; var OutVersion: String): Boolean;
 var
   TmpFile: String;
   Cmd: String;
   ResultCode: Integer;
   Lines: TArrayOfString;
-  RawVer: String;
-  P, Major, Minor: Integer;
+  Major, Minor: Integer;
 begin
   Result := False;
   OutVersion := '';
   TmpFile := ExpandConstant('{tmp}\pyver.txt');
+  DeleteFile(TmpFile);
 
-  Cmd := '/C python --version > "' + TmpFile + '" 2>&1';
+  Cmd := '/C """' + ExePath + '"" --version > """' + TmpFile + '""" 2>&1"';
   if Exec(ExpandConstant('{cmd}'), Cmd, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    if LoadStringsFromFile(TmpFile, Lines) and (GetArrayLength(Lines) > 0) then
+    if FileExists(TmpFile) and LoadStringsFromFile(TmpFile, Lines) and (GetArrayLength(Lines) > 0) then
     begin
-      RawVer := Trim(Lines[0]);
-      if Pos('Python ', RawVer) = 1 then
+      if ParsePythonVersion(Lines[0], Major, Minor) then
       begin
-        OutVersion := Trim(Copy(RawVer, 8, Length(RawVer)));
-        P := Pos('.', OutVersion);
-        if P > 0 then
-        begin
-          Major := StrToIntDef(Copy(OutVersion, 1, P - 1), 0);
-          RawVer := Copy(OutVersion, P + 1, Length(OutVersion));
-          P := Pos('.', RawVer);
-          if P > 0 then
-            Minor := StrToIntDef(Copy(RawVer, 1, P - 1), 0)
-          else
-            Minor := StrToIntDef(RawVer, 0);
-
-          if (Major > 3) or ((Major = 3) and (Minor >= 10)) then
-            Result := True;
-        end;
+        OutVersion := IntToStr(Major) + '.' + IntToStr(Minor);
+        Result := True;
       end;
     end;
   end;
   DeleteFile(TmpFile);
+end;
+
+
+function CheckRegistryPython(RootKey: Integer; const BaseKey: String; var OutExe, OutVersion: String): Boolean;
+var
+  SubKeys: TArrayOfString;
+  I, Major, Minor: Integer;
+  KeyName, RegPath, InstallPath, Candidate: String;
+begin
+  Result := False;
+  if RegGetSubkeyNames(RootKey, BaseKey, SubKeys) then
+  begin
+    for I := GetArrayLength(SubKeys) - 1 downto 0 do
+    begin
+      KeyName := SubKeys[I];
+      if ParsePythonVersion(KeyName, Major, Minor) then
+      begin
+        RegPath := BaseKey + '\' + KeyName + '\InstallPath';
+
+        if RegQueryStringValue(RootKey, RegPath, 'ExecutablePath', InstallPath) and FileExists(InstallPath) then
+        begin
+          OutExe := InstallPath;
+          OutVersion := IntToStr(Major) + '.' + IntToStr(Minor);
+          Result := True;
+          Exit;
+        end;
+
+        if RegQueryStringValue(RootKey, RegPath, '', InstallPath) then
+        begin
+          Candidate := AddBackslash(InstallPath) + 'python.exe';
+          if FileExists(Candidate) then
+          begin
+            OutExe := Candidate;
+            OutVersion := IntToStr(Major) + '.' + IntToStr(Minor);
+            Result := True;
+            Exit;
+          end;
+        end;
+      end;
+    end;
+  end;
+end;
+
+
+function CheckKnownPaths(var OutExe, OutVersion: String): Boolean;
+var
+  I: Integer;
+  Candidate: String;
+begin
+  Result := False;
+  for I := 14 downto 10 do
+  begin
+    Candidate := ExpandConstant('{localappdata}\Programs\Python\Python3' + IntToStr(I) + '\python.exe');
+    if FileExists(Candidate) then
+    begin
+      OutExe := Candidate;
+      OutVersion := '3.' + IntToStr(I);
+      Result := True;
+      Exit;
+    end;
+  end;
+
+  for I := 14 downto 10 do
+  begin
+    Candidate := ExpandConstant('{autopf}\Python3' + IntToStr(I) + '\python.exe');
+    if FileExists(Candidate) then
+    begin
+      OutExe := Candidate;
+      OutVersion := '3.' + IntToStr(I);
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+
+function FindAndVerifyPython(var OutExe: String; var OutVersion: String): Boolean;
+begin
+  Result := False;
+  OutExe := 'python';
+  OutVersion := '';
+
+  if CheckRegistryPython(HKCU, 'Software\Python\PythonCore', OutExe, OutVersion) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if CheckRegistryPython(HKLM, 'Software\Python\PythonCore', OutExe, OutVersion) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if CheckKnownPaths(OutExe, OutVersion) then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if TestPythonExe('python', OutVersion) then
+  begin
+    OutExe := 'python';
+    Result := True;
+    Exit;
+  end;
+
+  if TestPythonExe('py', OutVersion) then
+  begin
+    OutExe := 'py';
+    Result := True;
+    Exit;
+  end;
 end;
 
 
@@ -181,19 +317,45 @@ var
 begin
   WizardForm.NextButton.Enabled := False;
 
-  if GetPythonVersion(PyVer) then
+  if FindAndVerifyPython(DetectedPythonExe, PyVer) then
   begin
-    PythonStatusLabel.Caption := 'Python ' + PyVer + ' detected (compatible).';
+    PythonStatusLabel.Caption := 'Python ' + PyVer + ' detected (' + DetectedPythonExe + ').';
+    PythonHelpLabel.Caption :=
+      'Compatible Python environment found. You can now click Next to continue the installation.';
     WizardForm.NextButton.Enabled := True;
   end
   else
   begin
-    if PyVer <> '' then
-      PythonStatusLabel.Caption := 'Found Python ' + PyVer + ', but Python 3.10+ is required.'
-    else
-      PythonStatusLabel.Caption := 'Python is not installed or not found in system PATH.';
+    PythonStatusLabel.Caption := 'Python is not installed or not found on this computer.';
+    PythonHelpLabel.Caption :=
+      'Socksicle requires Python 3.10 or higher.'#13#10 +
+      'Click "Download Python 3.12 (64-bit)" below to download the official installer.'#13#10 +
+      'IMPORTANT: Make sure to check the box "Add Python to PATH" during Python installation!'#13#10#13#10 +
+      'Once installed, click "Re-check Python" to continue.';
     WizardForm.NextButton.Enabled := False;
   end;
+end;
+
+
+procedure DownloadPythonPageClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  ShellExec('open', 'https://www.python.org/downloads/', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+
+procedure DirectDownloadPythonClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  ShellExec('open', 'https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+
+procedure RecheckPythonClick(Sender: TObject);
+begin
+  CheckPythonStatus;
 end;
 
 
@@ -201,18 +363,59 @@ procedure CreatePythonPage;
 begin
   PythonPage := CreateCustomPage(
     EnginePage.ID,
-    'Environment Check',
-    'Checking for Python 3.10+...'
+    'Python Environment Check',
+    'Checking for Python 3.10+ installation...'
   );
 
   PythonStatusLabel := TNewStaticText.Create(PythonPage);
   PythonStatusLabel.Parent := PythonPage.Surface;
   PythonStatusLabel.Left := ScaleX(0);
-  PythonStatusLabel.Top := ScaleY(20);
+  PythonStatusLabel.Top := ScaleY(10);
   PythonStatusLabel.Width := PythonPage.SurfaceWidth;
-  PythonStatusLabel.Height := ScaleY(25);
-
+  PythonStatusLabel.Height := ScaleY(24);
+  PythonStatusLabel.Font.Style := [fsBold];
   PythonStatusLabel.Caption := 'Checking Python installation...';
+
+  PythonHelpLabel := TNewStaticText.Create(PythonPage);
+  PythonHelpLabel.Parent := PythonPage.Surface;
+  PythonHelpLabel.Left := ScaleX(0);
+  PythonHelpLabel.Top := ScaleY(40);
+  PythonHelpLabel.Width := PythonPage.SurfaceWidth;
+  PythonHelpLabel.Height := ScaleY(75);
+  PythonHelpLabel.AutoSize := False;
+  PythonHelpLabel.WordWrap := True;
+  PythonHelpLabel.Caption :=
+    'Socksicle requires Python 3.10 or higher.'#13#10 +
+    'If Python is not installed, click one of the download buttons below to install it.'#13#10 +
+    'IMPORTANT: Check the box "Add Python to PATH" during installation!'#13#10#13#10 +
+    'After installing Python, click "Re-check Python" to proceed.';
+
+  DirectDownloadPyButton := TNewButton.Create(PythonPage);
+  DirectDownloadPyButton.Parent := PythonPage.Surface;
+  DirectDownloadPyButton.Left := ScaleX(0);
+  DirectDownloadPyButton.Top := ScaleY(125);
+  DirectDownloadPyButton.Width := ScaleX(200);
+  DirectDownloadPyButton.Height := ScaleY(26);
+  DirectDownloadPyButton.Caption := 'Download Python 3.12 (64-bit)';
+  DirectDownloadPyButton.OnClick := @DirectDownloadPythonClick;
+
+  DownloadPyButton := TNewButton.Create(PythonPage);
+  DownloadPyButton.Parent := PythonPage.Surface;
+  DownloadPyButton.Left := ScaleX(210);
+  DownloadPyButton.Top := ScaleY(125);
+  DownloadPyButton.Width := ScaleX(180);
+  DownloadPyButton.Height := ScaleY(26);
+  DownloadPyButton.Caption := 'Python Downloads Page';
+  DownloadPyButton.OnClick := @DownloadPythonPageClick;
+
+  RecheckPyButton := TNewButton.Create(PythonPage);
+  RecheckPyButton.Parent := PythonPage.Surface;
+  RecheckPyButton.Left := ScaleX(0);
+  RecheckPyButton.Top := ScaleY(160);
+  RecheckPyButton.Width := ScaleX(150);
+  RecheckPyButton.Height := ScaleY(26);
+  RecheckPyButton.Caption := 'Re-check Python';
+  RecheckPyButton.OnClick := @RecheckPythonClick;
 end;
 
 
@@ -221,7 +424,7 @@ begin
   VersionPage := CreateCustomPage(
     PythonPage.ID,
     'Checking for Updates',
-    'Checking the latest versions...'
+    'Checking the latest versions from GitHub...'
   );
 
   StatusLabel := TNewStaticText.Create(VersionPage);
@@ -230,9 +433,7 @@ begin
   StatusLabel.Top := ScaleY(20);
   StatusLabel.Width := VersionPage.SurfaceWidth;
   StatusLabel.Height := ScaleY(25);
-
   StatusLabel.Caption := 'Checking connection to GitHub...';
-
 
   EngineVersionLabel := TNewStaticText.Create(VersionPage);
   EngineVersionLabel.Parent := VersionPage.Surface;
@@ -240,9 +441,7 @@ begin
   EngineVersionLabel.Top := ScaleY(65);
   EngineVersionLabel.Width := VersionPage.SurfaceWidth;
   EngineVersionLabel.Height := ScaleY(25);
-
   EngineVersionLabel.Caption := 'Engine: Checking...';
-
 
   SocksicleVersionLabel := TNewStaticText.Create(VersionPage);
   SocksicleVersionLabel.Parent := VersionPage.Surface;
@@ -250,9 +449,9 @@ begin
   SocksicleVersionLabel.Top := ScaleY(95);
   SocksicleVersionLabel.Width := VersionPage.SurfaceWidth;
   SocksicleVersionLabel.Height := ScaleY(25);
-
   SocksicleVersionLabel.Caption := 'Socksicle: Checking...';
 end;
+
 
 procedure MakeShortcutButtonClick(Sender: TObject);
 var
@@ -260,9 +459,16 @@ var
   ExePath: String;
   Params: String;
   WorkDir: String;
+  PythonDir: String;
 begin
-  ExePath := ExpandConstant('{app}\pythonw.exe');
-  if not FileExists(ExePath) then
+  if Pos('.exe', LowerCase(DetectedPythonExe)) > 0 then
+  begin
+    PythonDir := ExtractFileDir(DetectedPythonExe);
+    ExePath := AddBackslash(PythonDir) + 'pythonw.exe';
+    if not FileExists(ExePath) then
+      ExePath := DetectedPythonExe;
+  end
+  else
     ExePath := 'pythonw.exe';
 
   Params := '"' + ExpandConstant('{app}\main.py') + '"';
@@ -319,7 +525,6 @@ end;
 
 procedure InitializeWizard;
 begin
-
   WizardForm.WelcomeLabel1.Caption :=
     'Welcome to Socksicle Setup';
 
@@ -466,6 +671,7 @@ begin
     PipPage.SetText(S, '');
 end;
 
+
 function FindExtractedSocksicleDir: String;
 var
   FindRec: TFindRec;
@@ -499,7 +705,6 @@ var
   TargetEngineDir: String;
   ExtractedDir: String;
   Cmd: String;
-  Output: TExecOutput;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -522,7 +727,7 @@ begin
     try
       PipInstallDone := ExecAndLogOutput(
         ExpandConstant('{cmd}'),
-        '/C python -m pip install --no-warn-script-location .',
+        '/C "' + DetectedPythonExe + '" -m pip install --no-warn-script-location .',
         ExpandConstant('{app}'),
         SW_HIDE,
         ewWaitUntilTerminated,
