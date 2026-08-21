@@ -21,3 +21,14 @@ def _mock_init_app_fonts(monkeypatch):
     """Prevent font file access violations in parallel xdist workers."""
     import utils.font_utils
     monkeypatch.setattr(utils.font_utils, "init_app_fonts", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _flush_qt_events(qapp):
+    """Flush any deferred deletions and queued events after each test."""
+    yield
+    inst = QApplication.instance()
+    if inst is not None:
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        inst.processEvents()

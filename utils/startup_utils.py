@@ -8,7 +8,7 @@ Supports all registered engines (sslocal, xray, sing-box).
 from collections import deque
 import time
 
-from PySide6.QtCore import (QCoreApplication, QEventLoop, QObject, QThread,
+from PySide6.QtCore import (QCoreApplication, QEvent, QEventLoop, QObject, QThread,
                             QTimer, Signal, Slot, Qt)
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
@@ -268,12 +268,30 @@ def provision_backend(engine_type=None) -> object | None:
     loop.exec()
 
     tracker.stop()
-    dialog.close()
-    dialog.deleteLater()
+    try:
+        worker.finished.disconnect(receiver.on_finished)
+    except Exception:
+        pass
+    try:
+        dialog.canceled.disconnect(receiver.on_canceled)
+    except Exception:
+        pass
+    try:
+        worker.progress.disconnect(tracker.update)
+    except Exception:
+        pass
 
     if thread.isRunning():
         thread.quit()
         thread.wait(3000)
+
+    dialog.close()
+    dialog.deleteLater()
+    worker.deleteLater()
+    thread.deleteLater()
+
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QCoreApplication.processEvents()
 
     return receiver.result
 
