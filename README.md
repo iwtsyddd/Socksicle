@@ -1,112 +1,195 @@
-# Socksicle 🧦🧊
+# Socksicle
 
+Cross-platform proxy client for Windows and Linux.
 
-## Screenshot
+Socksicle provides a desktop interface for managing proxy servers and subscriptions with support for Shadowsocks, VLESS, VMess and Hysteria 2.
 
-<img width="35%" alt="Socksicle Screenshot" src="https://github.com/user-attachments/assets/11684261-97a0-4d4a-9da1-a42133a27be9" />
+Built with Python, PySide6 and external proxy engines such as `sslocal`, Xray and sing-box.
 
-Socksicle is a multi-protocol proxy client for **Linux and Windows**, built with
-PySide6 (Qt 6). It features a clean Material You (M3) inspired interface and a
-pluggable engine backend that supports **Shadowsocks, VLESS, VMess, and Hysteria 2** through
-`sslocal` (shadowsocks-rust), Xray-core, or sing-box.
+<p align="center">
+  <img
+    width="520"
+    alt="Socksicle"
+    src="https://github.com/user-attachments/assets/11684261-97a0-4d4a-9da1-a42133a27be9"
+  />
+</p>
 
 ## Features
 
-- **Material You (M3) interface**: frameless rounded window, animated sliding pill tabs, animated toggles and cards, theme presets with light/dark-aware styling.
-- **Multi-protocol support**: `ss://`, `vless://`, `vmess://`, `hysteria2://` and `hy2://` links, with a per-server protocol badge (e.g. `VLESS · Reality · WS`, `HY2`).
-- **Global TUN Mode (Beta)**: routes all system traffic through a virtual network interface using `sing-box`, with secure non-root capabilities (`cap_net_admin`) via Polkit on Linux.
-- **Kill Switch (Beta)**: OS firewall-level traffic blocking (`netsh advfirewall` on Windows, `nftables`/`iptables` on Linux) to prevent real IP leaks if the tunnel drops unexpectedly, complete with emergency startup cleanup and UAC elevation prompts.
-- **Custom Secure DNS (DoH / DoT)**: configurable encrypted DNS resolvers including Cloudflare DoH (`1.1.1.1`), Quad9 DoH, AdGuard DoH (built-in ad/tracker blocking), Google DoH (`8.8.8.8`), and custom user-provided endpoints.
-- **Auto-Healing Watchdog**: instant non-blocking auto-reconnection with retained UI state if an underlying proxy engine exits unexpectedly.
-- **Engine selection**: choose between **sslocal**, **xray** or **sing-box** in Settings; missing engines are offered for **automatic download** (pinned official releases with speed and ETA progress) and can also be placed manually in `bin/`.
-- **Subscription management**: Base64-encoded link lists, SIP008 JSON and plain-text subscriptions; `ss://`, `vless://`, `vmess://` and `hy2://` nodes are imported together with support for `Subscription-Userinfo`, `Profile-Title`, and auto-update intervals.
-- **Traffic & expiry monitoring**: remaining data usage and expiration countdown badges (`⏳ 48h`, `⏳ 3d`, `[EXPIRED]`) dynamically computed from server expiration timestamps.
-- **Subscription descriptions**: profile descriptions, node counts, last update time, and auto-update interval settings.
-- **Ping methods**: HTTP GET, HTTP HEAD or TCP connect; "Ping All" measures latency across all nodes in parallel without freezing the UI.
-- **Geo-location integration**: after connecting, public IP and country flags are fetched through the tunnel and rendered in the status card with bundled Windows Color Emoji support.
-- **QR share & Encryption Studio**: every node exposes its link as a QR code; links and subscription URLs can also be encrypted into `tws3://` tokens with **TwinSock v3 URL Studio** (`gen_url.html`, with dedicated `.bat` and `.sh` launchers).
-- **Export / import**: profiles (servers + subscriptions) can be exported to and imported from JSON files, honoring export-lock security flags.
-- **Tray integration**: minimize to tray on close, per-server tray menu, Windows Explorer restart recovery, and auto-reconnect after sleep/hibernate resume.
-- **User-local installation**: the Linux installer installs into `~/.local/share/socksicle` without root; Windows uses per-user `%APPDATA%` / `%LOCALAPPDATA%` locations.
+* Windows and Linux support
+* Shadowsocks, VLESS, VMess and Hysteria 2
+* `sslocal`, Xray and sing-box engine support
+* Subscription import and automatic updates
+* TUN mode through sing-box
+* Optional kill switch
+* Encrypted local storage for sensitive configuration data
+* HTTP, HEAD and TCP latency checks
+* Parallel node testing
+* System tray integration
+* Automatic reconnect after unexpected engine exits
+* QR code sharing
+* JSON import and export
+* DoH / DoT DNS configuration
+* Material 3 inspired interface
 
-## Requirements
+## Supported protocols
 
-- **Python 3.10+**
-- **One proxy engine binary** (sslocal, xray or sing-box). None installed? The app offers to download one automatically on first launch.
+| Protocol    | Engines                 |
+| ----------- | ----------------------- |
+| Shadowsocks | sslocal, Xray, sing-box |
+| VLESS       | Xray, sing-box          |
+| VMess       | Xray, sing-box          |
+| Hysteria 2  | sing-box                |
+
+Supported link formats include:
+
+```text
+ss://
+vless://
+vmess://
+hysteria2://
+hy2://
+```
+
+Subscriptions can also be imported from HTTP(S) URLs and supported subscription formats.
+
+## Download
+
+The latest Windows installer is available on the GitHub Releases page:
+
+[Latest release](https://github.com/iwtsyddd/Socksicle/releases)
+
+Linux can be installed directly from the repository.
 
 ## Installation
 
 ### Linux
 
-Run the provided installer script — it installs the app into `~/.local/share/socksicle`, creates a `socksicle` launcher in `~/.local/bin` and a desktop entry in your application menu:
-
 ```bash
+git clone https://github.com/iwtsyddd/Socksicle.git
+cd Socksicle
+
 chmod +x install.sh
 ./install.sh
 ```
 
+The installer installs Socksicle for the current user without requiring a system-wide installation.
+
 ### Windows
 
-1. Install Python 3.10+ (check "Add Python to PATH").
-2. Install dependencies and run:
+Install Python 3.10 or newer and then:
 
-```bash
+```powershell
 pip install .
-socksicle          # or: python main.py
 ```
 
-## Usage
+Run with:
 
-1. Click **+ Add** and paste an `ss://`, `vless://`, `vmess://`, `hysteria2://` link, a subscription URL (`http(s)://`), or a `tws3://` share token.
-2. Select a server in the list and flip the power switch. Connection is verified asynchronously in the background via local SOCKS5 probing on `127.0.0.1:<port>` (default `1080`).
-3. Use **⚡ Ping All** to find the fastest node, **🔄 Update** to refresh a subscription, and the tray icon to connect/disconnect and quit.
-4. The **Logs** panel shows live engine output; **About** links to the [GitHub repository](https://github.com/iwtsyddd/Socksicle).
+```powershell
+socksicle
+```
 
-## Settings
+or:
 
-- **Proxy engine** — sslocal (Shadowsocks only), xray, or sing-box (automatically used in TUN mode).
-- **TUN Mode (Beta)** — global system VPN routing via sing-box.
-- **Kill Switch (Beta)** — OS firewall leak protection blocking direct outbound traffic on tunnel drops.
-- **Secure DNS** — DoH / DoT presets (Cloudflare, Quad9, AdGuard, Google) or custom URL.
-- **Local port** — the SOCKS5 listen port on `127.0.0.1`.
-- **Auto-connect on startup** / **Minimize to tray on close** / **Auto-update subscriptions**.
-- **Subscription User-Agent** — pick a client preset (clash, v2rayNG, hiddify, …) or default `socksicle`.
-- **Ping method** — HTTP GET, HTTP HEAD, or TCP connect.
-- **Fake X-hwid header** — optionally spoof the `X-hwid` header for panels.
-- **TwinSock key** — personal AES-256-GCM key that signs and unlocks `tws3://` shares.
+```powershell
+python main.py
+```
 
-## Engines
+## Configuration
 
-| Engine | Protocols | Auto-download | Notes |
-| ------ | --------- | ------------- | ----- |
-| `sslocal` (shadowsocks-rust, pinned v1.24.0) | Shadowsocks | yes | Static musl builds on Linux; Windows x64 only |
-| `xray` (Xray-core, pinned v25.4.3) | Shadowsocks, VLESS, VMess | yes | TLS / REALITY, ws / grpc / xhttp transports |
-| `sing-box` (pinned v1.11.8) | Shadowsocks, VLESS, VMess, Hysteria 2 | yes | TLS / REALITY, ws / grpc / http transports, TUN mode, Obfs |
+Socksicle stores its configuration in the user's application data directory.
 
-Engine binaries are located in, in order: `bin/` next to the app, the per-user config `bin/` directory, `bin/<engine>/` subdirectories, and finally the system `PATH`. Downloads are validated (executable format + `--version`) before being installed atomically.
+### Linux
 
-## Configuration & Storage
+```text
+~/.config/socksicle/
+```
 
-All settings, servers and subscriptions are stored under the per-user config directory, no admin rights needed:
+### Windows
 
-- **Linux**: `~/.config/socksicle/`
-- **Windows**: `%APPDATA%\socksicle\` (logs in `%LOCALAPPDATA%\socksicle\logs`)
+```text
+%APPDATA%\socksicle\
+```
 
-Files: `servers.json`, `subscriptions.json`, `settings.json`, `drawer.json` (TwinSock vault), and `bin/` with app-managed engine binaries.
+Depending on configuration, the directory may contain:
 
-> **TwinSock v3 vault note**: passwords, keys, UUIDs and subscription URLs are stored as `tws3.` tokens encrypted with an **AES-256-GCM AEAD** key bound to this machine's stable hardware fingerprint (Windows `MachineGuid` / Linux `machine-id`). Copying the config to another machine will not unlock it. `gen_url.html` (and the `URL Encryption Studio.bat` / `.sh` launchers) provides a modern 2026 client-side zero-knowledge tool for generating `tws3://` tokens offline with built-in QR code generation; the same generator is hosted online at <https://iwtsyddd.github.io/TwinSockGen/>.
+```text
+servers.json
+subscriptions.json
+settings.json
+drawer.json
+bin/
+logs/
+```
 
-## Testing
+Sensitive fields are stored in encrypted form using the built-in TwinSock vault.
 
-The pytest suite runs headless (`QT_QPA_PLATFORM=offscreen`) and never
-touches the network or real subprocesses:
+## Proxy engines
+
+Socksicle can use different backend engines depending on the selected protocol and mode.
+
+| Engine     | Purpose                                    |
+| ---------- | ------------------------------------------ |
+| `sslocal`  | Shadowsocks                                |
+| `xray`     | Shadowsocks, VLESS, VMess                  |
+| `sing-box` | Shadowsocks, VLESS, VMess, Hysteria 2, TUN |
+
+Missing engine binaries can be downloaded by Socksicle or installed manually.
+
+## TUN mode
+
+TUN mode routes system traffic through a virtual network interface using sing-box.
+
+On Linux, Socksicle can use Polkit and Linux capabilities instead of running the entire application as root.
+
+TUN mode is currently marked as beta.
+
+## Security
+
+Socksicle encrypts sensitive local configuration fields instead of storing them as plain text.
+
+The current vault uses:
+
+* AES-256-GCM
+* HKDF-SHA256
+* machine-bound key derivation
+
+The encryption layer is intended to protect stored configuration data on the local machine. It does not make the proxy connection itself anonymous or guarantee protection against every possible system-level attack.
+
+See [SECURITY.md](SECURITY.md) for the security model and vulnerability reporting process.
+
+## Development
+
+Clone the repository and install development dependencies:
+
+```bash
+git clone https://github.com/iwtsyddd/Socksicle.git
+cd Socksicle
+
+pip install -e ".[dev]"
+```
+
+Run the test suite:
 
 ```bash
 python -m pytest tests -q
 ```
 
-CI (GitHub Actions) runs the same suite on every push and pull request.
+The project also runs the test suite in GitHub Actions on Windows and Linux.
+
+## Project structure
+
+```text
+Socksicle/
+├── ui/          # Qt interface
+├── utils/       # networking, engines, storage and platform code
+├── tests/       # test suite
+├── data/        # application data
+├── main.py      # application entry point
+├── install.sh   # Linux installer
+└── pyproject.toml
+```
 
 ## License
 
-MIT — see the [LICENSE](LICENSE) file.
+MIT. See [LICENSE](LICENSE).
