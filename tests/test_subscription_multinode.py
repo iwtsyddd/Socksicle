@@ -3,12 +3,12 @@ import base64
 import json
 from utils.server_model import Server, ProxyProtocol
 from utils.subscription_manager import SubscriptionManager
-import utils.sub_manager as sm
+import utils.subscription_store as sm
 
 
 def test_multinode_same_host_preserved(tmp_path, monkeypatch):
     """Ensure nodes with same host/uuid but different names/flags (e.g. Google DE, Google NL) are preserved."""
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     de_link = "vless://uuid-123@google.com:443?security=reality&sni=de.google.com#Google%20%F0%9F%87%A9%F0%9F%87%AA"
     nl_link = "vless://uuid-123@google.com:443?security=reality&sni=nl.google.com#Google%20%F0%9F%87%B3%F0%9F%87%B1"

@@ -6,7 +6,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, Signal, QTimer
 
 from .server_model import Server
-from .sub_manager import load_subscriptions, parse_subscription, save_subscriptions
+from .subscription_store import load_subscriptions, parse_subscription, save_subscriptions
 
 # How often the auto-update timer checks subscriptions for pending refreshes.
 AUTO_UPDATE_INTERVAL_MS = 5 * 60 * 1000

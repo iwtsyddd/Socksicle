@@ -8,7 +8,7 @@ import time
 
 from .platform_utils import get_config_dir
 from .server_model import Server
-from .sub_manager import save_subscriptions
+from .subscription_store import save_subscriptions
 from .engines.base import DEFAULT_LOCAL_PORT
 from .ping import DEFAULT_PING_METHOD
 from . import twinsock

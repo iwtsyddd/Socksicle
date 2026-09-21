@@ -109,7 +109,9 @@ def _parse_hysteria2(raw_link, default_name="Server"):
         params = parse_qs(query_str, keep_blank_values=True)
         def _param(key): return params.get(key, [''])[0]
 
-        sni = _param('sni') or _param('peer')
+        if not password:
+            password = _param('auth') or _param('password')
+        sni = _param('sni') or _param('peer') or _param('serverName') or _param('servername')
         insecure_param = (
             _param('insecure') or _param('allowInsecure') or _param('allow_insecure') or
             _param('skip-cert-verify') or _param('skip_cert_verify') or _param('tls_insecure')
@@ -190,15 +192,15 @@ def _parse_vless(raw_link, default_name="Server"):
         def _param(key): return params.get(key, [''])[0]
 
         security = _param('security') or 'none'
-        transport = _param('type') or 'tcp'
+        transport = _param('type') or _param('transport') or _param('net') or 'tcp'
         flow = _param('flow')
-        sni = _param('sni')
-        fp = _param('fp') or 'chrome'
-        pbk = _param('pbk')
-        sid = _param('sid')
+        sni = _param('sni') or _param('peer') or _param('serverName') or _param('servername')
+        fp = _param('fp') or _param('fingerprint') or 'chrome'
+        pbk = _param('pbk') or _param('publicKey') or _param('pk')
+        sid = _param('sid') or _param('shortId')
         enc = _param('encryption') or 'none'
-        host_header = _param('host')
-        path = _param('path') or _param('serviceName')
+        host_header = _param('host') or _param('host_header') or _param('headerType')
+        path = _param('path') or _param('serviceName') or _param('servicename')
 
         is_priv = is_private_host(host)
         if is_priv:

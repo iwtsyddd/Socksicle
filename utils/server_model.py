@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 
-from .ss_parser import decode_ss_link
+from .shadowsocks_parser import decode_ss_link
 
 log = logging.getLogger(__name__)
 

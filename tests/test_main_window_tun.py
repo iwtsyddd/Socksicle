@@ -14,7 +14,7 @@ import utils.twinsock as tw
 def main_win(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(tw, "get_config_dir", lambda: tmp_path)
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
     monkeypatch.setattr("utils.platform_utils.get_config_dir", lambda: tmp_path)
     tw._reset()
     tw.ensure_drawer()

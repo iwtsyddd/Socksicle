@@ -201,7 +201,7 @@ def test_foreign_drawer_refused(vault_env, monkeypatch, tmp_path):
 
 def test_subscription_seal_unseal(vault_env, monkeypatch, tmp_path):
     _patch_machine(monkeypatch)
-    from utils import sub_manager as sbm
+    from utils import subscription_store as sbm
     monkeypatch.setattr(sbm, "get_config_dir", lambda: tmp_path)
     subs = [{
         "name": "Sub A",
@@ -234,7 +234,7 @@ def test_subscription_seal_unseal(vault_env, monkeypatch, tmp_path):
 
 def test_subscriptions_foreign_loads_empty(vault_env, monkeypatch, tmp_path):
     _patch_machine(monkeypatch, host="hostA", machine_guid="guid-A")
-    from utils import sub_manager as sbm
+    from utils import subscription_store as sbm
     monkeypatch.setattr(sbm, "get_config_dir", lambda: tmp_path)
     sbm.save_subscriptions([{
         "name": "Sub", "url": "https://example.com/s",
@@ -249,7 +249,7 @@ def test_subscriptions_foreign_loads_empty(vault_env, monkeypatch, tmp_path):
 def test_export_import_roundtrip(vault_env, monkeypatch, tmp_path):
     _patch_machine(monkeypatch)
     from utils import server_manager as sm
-    from utils import sub_manager as sbm
+    from utils import subscription_store as sbm
     monkeypatch.setattr(sm, "get_config_dir", lambda: tmp_path)
     monkeypatch.setattr(sbm, "get_config_dir", lambda: tmp_path)
     mgr = sm.ServerManager()
@@ -683,7 +683,7 @@ def test_main_window_rejects_tws2_when_pure_tws3(qapp, monkeypatch, tmp_path):
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda parent, title, text: warned.append(text))
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     win = RoundedWindow()
     win.settings["tws3_share_key"] = "pure-v3-share-key"
@@ -710,7 +710,7 @@ def test_main_window_add_tws3_server_link(qapp, monkeypatch, tmp_path):
     tws3_link = tw.encrypt_share(share_key, ss)
 
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     win = RoundedWindow()
     win.settings["tws3_share_key"] = share_key
@@ -777,7 +777,7 @@ def test_full_v2_to_v3_migration_with_share_key_and_drawer(qapp, monkeypatch, tm
 
     # 5. Start app / ServerManager on v3
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     mgr = ServerManager()
     assert len(mgr.manual_servers) == 1
@@ -811,7 +811,7 @@ def test_main_window_tws3_with_metadata(qapp, monkeypatch, tmp_path):
     tws3_link = tw.encrypt_share(share_key, ss, lock_export=True, expires_at=expires)
 
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     win = RoundedWindow()
     win.settings["tws3_share_key"] = share_key
@@ -844,7 +844,7 @@ def test_main_window_expired_server_blocks_connection(qapp, monkeypatch, tmp_pat
     monkeypatch.setattr(QMessageBox, "warning", lambda parent, title, text: warned.append((title, text)))
     monkeypatch.setattr(QMessageBox, "information", lambda parent, title, text: informed.append((title, text)))
     monkeypatch.setattr("utils.server_manager.get_config_dir", lambda: tmp_path)
-    monkeypatch.setattr("utils.sub_manager.get_config_dir", lambda: tmp_path)
+    monkeypatch.setattr("utils.subscription_store.get_config_dir", lambda: tmp_path)
 
     # Expired link (timestamp in past)
     expired_ts = 1000000000

@@ -2,14 +2,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HTML_FILE="$SCRIPT_DIR/gen_url.html"
+HTML_FILE="$SCRIPT_DIR/index.html"
 
 if [ ! -f "$HTML_FILE" ]; then
-    HTML_FILE="$SCRIPT_DIR/ui/gen_url.html"
-fi
-
-if [ ! -f "$HTML_FILE" ]; then
-    echo "[ERROR] Could not locate gen_url.html in $SCRIPT_DIR" >&2
+    echo "[ERROR] Could not locate index.html in $SCRIPT_DIR" >&2
     exit 1
 fi
 

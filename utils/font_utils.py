@@ -25,10 +25,14 @@ def init_app_fonts() -> str | None:
 
     font_names = ["NotoColorEmoji.ttf", "NotoColorEmoji_WindowsCompatible.ttf", "NotoColorEmoji-Regular.ttf"]
     for name in font_names:
-        font_path = get_app_dir() / "ui" / name
-        if not font_path.exists():
-            font_path = Path(__file__).resolve().parent.parent / "ui" / name
-        if font_path.exists():
+        candidate_paths = [
+            get_app_dir() / "assets" / "fonts" / name,
+            Path(__file__).resolve().parent.parent / "assets" / "fonts" / name,
+            get_app_dir() / "ui" / name,
+            Path(__file__).resolve().parent.parent / "ui" / name,
+        ]
+        font_path = next((p for p in candidate_paths if p.exists()), None)
+        if font_path is not None:
             font_id = QFontDatabase.addApplicationFont(str(font_path))
             if font_id != -1:
                 families = QFontDatabase.applicationFontFamilies(font_id)

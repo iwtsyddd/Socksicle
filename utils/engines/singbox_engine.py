@@ -124,6 +124,10 @@ def _build_singbox_vless_outbound(server) -> dict:
         tls["utls"] = {"enabled": True, "fingerprint": fp}
         if getattr(server, "allow_insecure", False) or getattr(server, "insecure", False):
             tls["insecure"] = True
+        if transport_type in ("ws", "httpupgrade"):
+            tls["alpn"] = ["http/1.1"]
+        elif transport_type == "grpc":
+            tls["alpn"] = ["h2"]
         if security == "reality":
             pbk = getattr(server, "public_key", "") or ""
             sid = getattr(server, "short_id", "") or ""
@@ -149,6 +153,7 @@ def _build_singbox_vmess_outbound(server) -> dict:
         "security": getattr(server, "vmess_security", "auto") or "auto",
     }
 
+    transport_type = getattr(server, "transport", "tcp") or "tcp"
     security = getattr(server, "security", "none") or "none"
     if security != "none":
         tls = {"enabled": True}
@@ -159,6 +164,10 @@ def _build_singbox_vmess_outbound(server) -> dict:
         tls["utls"] = {"enabled": True, "fingerprint": fp}
         if getattr(server, "allow_insecure", False) or getattr(server, "insecure", False):
             tls["insecure"] = True
+        if transport_type in ("ws", "httpupgrade"):
+            tls["alpn"] = ["http/1.1"]
+        elif transport_type == "grpc":
+            tls["alpn"] = ["h2"]
         outbound["tls"] = tls
 
     transport = _build_singbox_transport(server)

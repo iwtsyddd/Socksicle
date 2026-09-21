@@ -6,7 +6,7 @@ DefaultDirName={autopf}\Socksicle
 DefaultGroupName=Socksicle
 Compression=lzma2
 SolidCompression=yes
-OutputDir=.\
+OutputDir=..\..\
 DisableWelcomePage=no
 
 ArchitecturesAllowed=x64compatible

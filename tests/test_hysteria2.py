@@ -74,6 +74,14 @@ class TestHysteria2LinkParser(unittest.TestCase):
         self.assertEqual(server.host, "node.example.com")
         self.assertEqual(server.port, 443)
 
+    def test_parse_auth_query_param(self):
+        link = "hy2://node.example.com:443?auth=secret-pass&peer=custom.peer.com#AuthParam"
+        server = parse_link(link)
+        self.assertIsNotNone(server)
+        self.assertEqual(server.password, "secret-pass")
+        self.assertEqual(server.server_name, "custom.peer.com")
+        self.assertEqual(server.host, "node.example.com")
+
     def test_parse_links_from_text(self):
         text = (
             "Here are configs:\n"

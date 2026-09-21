@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 
 from utils.platform_startup import is_autostart_enabled
 from utils.platform_utils import is_admin, is_windows
-from utils.sub_manager import USER_AGENT_PRESETS
+from utils.subscription_store import USER_AGENT_PRESETS
 from utils.window_utils import configure_window
 from utils.engines.base import DEFAULT_LOCAL_PORT
 from utils.ping import DEFAULT_PING_METHOD

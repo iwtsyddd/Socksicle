@@ -55,7 +55,7 @@ packages = ["ui", "utils"]
 include = [
     "main.py",
     "icon.png",
-    "__init__.py",
+    "assets",
 ]
 
 [tool.hatch.build]

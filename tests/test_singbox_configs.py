@@ -86,6 +86,7 @@ class SingBoxVlessConfigTest(unittest.TestCase):
         ob = _build_singbox_vless_outbound(server)
         self.assertIn("tls", ob)
         self.assertNotIn("reality", ob["tls"])
+        self.assertEqual(ob["tls"]["alpn"], ["http/1.1"])
         self.assertIn("transport", ob)
         tr = ob["transport"]
         self.assertEqual(tr["type"], "ws")

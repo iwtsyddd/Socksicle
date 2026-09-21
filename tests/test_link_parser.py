@@ -195,7 +195,7 @@ class TestParseVmessLink:
 class TestFromLinkBackwardCompat:
     def test_ss_link_still_works(self):
         """Server.from_link should still handle ss:// links."""
-        from utils.ss_parser import decode_ss_link
+        from utils.shadowsocks_parser import decode_ss_link
         inner = _b64_encode("aes-256-gcm:testpass@1.2.3.4:8388")
         link = f"ss://{inner}#SS%20Test"
         s = Server.from_link(link)

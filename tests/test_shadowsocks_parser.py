@@ -1,4 +1,4 @@
-"""Unit tests for ss_parser and sub_manager."""
+"""Unit tests for shadowsocks_parser and subscription_store."""
 import base64
 import json
 import pytest
@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from utils.ss_parser import decode_ss_link, _parse_plugin, _unescape_plugin_string
+from utils.shadowsocks_parser import decode_ss_link, _parse_plugin, _unescape_plugin_string
 
 
 # --- Helper to build ss:// links ---
@@ -256,11 +256,11 @@ class TestServerModel:
         assert s1.unique_key != s3.unique_key
 
 
-# --- Tests for SIP008 JSON parsing in sub_manager ---
+# --- Tests for SIP008 JSON parsing in subscription_store ---
 
 class TestSIP008JSON:
     def test_valid_sip008(self):
-        from utils.sub_manager import _try_parse_sip008_json
+        from utils.subscription_store import _try_parse_sip008_json
         data = {
             "version": 1,
             "servers": [
@@ -283,7 +283,7 @@ class TestSIP008JSON:
         assert meta['traffic']['total'] == 1073741824 + 5368709120
 
     def test_sip008_with_plugin(self):
-        from utils.sub_manager import _try_parse_sip008_json
+        from utils.subscription_store import _try_parse_sip008_json
         data = {
             "version": 1,
             "servers": [
@@ -304,18 +304,18 @@ class TestSIP008JSON:
         assert "plugin=" in ss_links[0]
 
     def test_invalid_json(self):
-        from utils.sub_manager import _try_parse_sip008_json
+        from utils.subscription_store import _try_parse_sip008_json
         result = _try_parse_sip008_json("not json at all")
         assert result is None
 
     def test_wrong_version(self):
-        from utils.sub_manager import _try_parse_sip008_json
+        from utils.subscription_store import _try_parse_sip008_json
         data = {"version": 2, "servers": []}
         result = _try_parse_sip008_json(json.dumps(data))
         assert result is None
 
     def test_no_servers(self):
-        from utils.sub_manager import _try_parse_sip008_json
+        from utils.subscription_store import _try_parse_sip008_json
         data = {"version": 1, "servers": []}
         ss_links, meta = _try_parse_sip008_json(json.dumps(data))
         assert len(ss_links) == 0
@@ -330,7 +330,7 @@ class TestMetadataExtraction:
         return resp
 
     def test_traffic_header(self):
-        from utils.sub_manager import _extract_metadata
+        from utils.subscription_store import _extract_metadata
         resp = self._make_response({
             'Subscription-Userinfo': 'upload=1000; download=2000; total=5000; expire=1700000000'
         })
@@ -340,7 +340,7 @@ class TestMetadataExtraction:
         assert meta['traffic']['expire'] == 1700000000
 
     def test_profile_headers(self):
-        from utils.sub_manager import _extract_metadata
+        from utils.subscription_store import _extract_metadata
         resp = self._make_response({
             'Profile-Title': 'My Provider',
             'Profile-Update-Interval': '24',
@@ -354,7 +354,7 @@ class TestMetadataExtraction:
         assert meta['announce'] == 'Server maintenance on Friday'
 
     def test_no_headers(self):
-        from utils.sub_manager import _extract_metadata
+        from utils.subscription_store import _extract_metadata
         resp = self._make_response({})
         meta = _extract_metadata(resp)
         assert meta == {}
@@ -364,20 +364,20 @@ class TestMetadataExtraction:
 
 class TestDecodeMaybeBase64:
     def test_plaintext_passthrough(self):
-        from utils.sub_manager import _decode_maybe_base64
+        from utils.subscription_store import _decode_maybe_base64
         assert _decode_maybe_base64("My Provider") == "My Provider"
         assert _decode_maybe_base64("") == ""
 
     def test_decodes_base64(self):
-        from utils.sub_manager import _decode_maybe_base64
+        from utils.subscription_store import _decode_maybe_base64
         assert _decode_maybe_base64("base64:VGVzdA==") == "Test"
 
     def test_undecodable_passthrough(self):
-        from utils.sub_manager import _decode_maybe_base64
+        from utils.subscription_store import _decode_maybe_base64
         assert _decode_maybe_base64("base64:!!!not-b64!!!") == "base64:!!!not-b64!!!"
 
     def test_decodes_base64_utf8(self):
-        from utils.sub_manager import _decode_maybe_base64
+        from utils.subscription_store import _decode_maybe_base64
         encoded = base64.b64encode("✦ Ínfinity".encode()).decode()
         assert _decode_maybe_base64("base64:" + encoded) == "✦ Ínfinity"
 
@@ -386,19 +386,19 @@ class TestDecodeMaybeBase64:
 
 class TestExtractDescription:
     def test_header_description_beats_announce(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         meta = {'description': 'From header', 'announce': 'Announce text'}
         result = _extract_description({}, ['ss://a@b:443'], meta['announce'], meta)
         assert result == 'From header'
 
     def test_undecodable_header_description_skipped(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         meta = {'description': 'base64:!!!bad!!!', 'announce': 'Announce text'}
         result = _extract_description({}, ['ss://a@b:443'], meta['announce'], meta)
         assert result == 'Announce text'
 
     def test_announce_url_skipped(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         meta = {'announce': 'https://example.com/news'}
         result = _extract_description({}, ['ss://a@b:443'], meta['announce'], meta)
         assert result == ''
@@ -407,29 +407,29 @@ class TestExtractDescription:
         assert result == 'Welcome aboard'
 
     def test_announce_text_used(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         result = _extract_description({}, ['ss://a@b:443'], 'Server maintenance on Friday', {})
         assert result == 'Server maintenance on Friday'
 
     def test_announce_base64_skipped(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         result = _extract_description({}, ['ss://a@b:443'], 'base64:!!!bad!!!', {})
         assert result == ''
 
     def test_body_preamble_used(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         lines = ['First line', '', 'base64:!!!skip!!!', 'Second line',
                  'ss://a@b:443', 'ss://c@d:444']
         result = _extract_description({}, lines, '', {})
         assert result == 'First line Second line'
 
     def test_all_links_no_description(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         result = _extract_description({}, ['ss://a@b:443', 'vless://x@y:443'], '', {})
         assert result == ''
 
     def test_preamble_capped_at_ten_lines(self):
-        from utils.sub_manager import _extract_description
+        from utils.subscription_store import _extract_description
         lines = [f"line {i}" for i in range(15)] + ['ss://a@b:443']
         result = _extract_description({}, lines, '', {})
         assert result == ' '.join(f"line {i}" for i in range(10))
@@ -442,7 +442,7 @@ class TestParseSubscriptionMetadata:
 
     def _mock_urlopen(self, body, headers):
         import urllib.request
-        from utils import sub_manager
+        from utils import subscription_store as sub_manager
         resp = MagicMock()
         resp.read.return_value = body.encode()
         resp.headers = headers
@@ -450,7 +450,7 @@ class TestParseSubscriptionMetadata:
         return patch.object(sub_manager.urllib.request, 'urlopen', return_value=resp)
 
     def test_header_description_and_decoded_title(self):
-        from utils import sub_manager
+        from utils import subscription_store as sub_manager
         enc = lambda s: 'base64:' + base64.b64encode(s.encode()).decode()
         headers = {
             'Profile-Title': enc('My Provider'),
@@ -466,7 +466,7 @@ class TestParseSubscriptionMetadata:
         assert meta['description'] == 'Premium service, 4K ready'
 
     def test_announce_becomes_description_without_header(self):
-        from utils import sub_manager
+        from utils import subscription_store as sub_manager
         enc = lambda s: 'base64:' + base64.b64encode(s.encode()).decode()
         headers = {'Announce': enc('Welcome to Infinity')}
         body = base64.b64encode(self._LINK.encode()).decode()
@@ -476,7 +476,7 @@ class TestParseSubscriptionMetadata:
         assert meta['description'] == 'Welcome to Infinity'
 
     def test_body_preamble_becomes_description(self):
-        from utils import sub_manager
+        from utils import subscription_store as sub_manager
         text = "Welcome to the club\nss://a@b:443"
         body = base64.b64encode(text.encode()).decode()
         with self._mock_urlopen(body, {}):

@@ -26,8 +26,8 @@ mkdir -p "$ICON_DIR"
 mkdir -p "$DESKTOP_DIR"
 
 # Copy files
-cp -r ui utils data main.py icon.png gen_url.html "URL Encryption Studio.sh" "$INSTALL_DIR/" 2>/dev/null || cp -r ui utils main.py icon.png gen_url.html "$INSTALL_DIR/" 2>/dev/null || cp -r ui utils main.py icon.png "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/URL Encryption Studio.sh" 2>/dev/null || true
+cp -r ui utils data assets tools main.py icon.png "$INSTALL_DIR/" 2>/dev/null || cp -r ui utils main.py icon.png "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/tools/twinsock-studio/open-linux.sh" 2>/dev/null || true
 
 # Install Polkit policy for TUN mode if directory is writable or via sudo
 POLKIT_ACTIONS_DIR="/usr/share/polkit-1/actions"
